@@ -10,7 +10,7 @@
     "generate": "tsx scripts/generate.ts",
     "render": "remotion render src/index.ts Explainer out/video.mp4",
     "typecheck": "tsc --noEmit",
-    "test": "node --test test/",
+    "test": "node --test test/*.test.mjs",
     "admin": "node admin/server.mjs"
   },
   "dependencies": {

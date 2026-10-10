@@ -1,4 +1,6 @@
-// Musical Explainers admin UI. Vanilla JS, no build step.
+// Musical Explainers admin UI. Vanilla JS, no build step. All pipeline rules
+// (validation, staleness, jobs, files) live on the server; this only shows
+// them and sends requests.
 "use strict";
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -7,14 +9,17 @@ const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "
 const app = $("#app");
 
 const S = {
-  meta: { statuses: [], sceneKinds: [], modes: {} },
+  meta: { statuses: [], stages: [], sections: [], visuals: {}, icons: [], modes: {} },
   route: { name: "videos" },
   video: null, // detail payload for the open video
-  spec: null, // working copy in the spec editor
+  spec: null, // working copy in the storyboard editor
   specDirty: false,
   specRaw: false,
+  openShot: null,
   logJobId: null,
   fresh: false,
+  cand: null, // selected candidate on the review tab
+  compare: null,
 };
 
 // ---------- api ----------
@@ -63,14 +68,31 @@ const dur = (sec) => (sec == null ? "" : `${Math.floor(sec / 60)}:${String(Math.
 const elapsed = (a, b) => (a ? dur(((b ?? Date.now()) - a) / 1000) : "");
 
 const STATUS_CLASS = { queued: "", scripting: "run", review: "hi", approved: "ok", scheduled: "ok", published: "ok", rejected: "bad", untracked: "warn" };
-const pill = (text, cls = "", dot = false) => `<span class="pill ${cls}">${dot ? '<span class="dot"></span>' : ""}${esc(text)}</span>`;
+const pill = (text, cls = "", dot = false, title = "") => `<span class="pill ${cls}" ${title ? `title="${esc(title)}"` : ""}>${dot ? '<span class="dot"></span>' : ""}${esc(text)}</span>`;
 const statusPill = (s) => pill(s, STATUS_CLASS[s] ?? "");
 
-const STAGE_LABEL = {
-  queued: "Waiting in queue", script: "Writing script", spec: "Loaded spec", factcheck: "Fact-checking",
-  "factcheck-ok": "Fact-check passed", revise: "Revising flagged claims", audio: "Audio (stub)", saved: "Spec saved",
-  "render-main": "Rendering main video", "render-short": "Rendering Short", done: "Done",
+const STAGE_LABEL = { script: "Script", factcheck: "Fact-check", direct: "Storyboard", assets: "Assets", audio: "Audio", render: "Render", qa: "Quality", package: "Package" };
+const STAGE_HELP = {
+  script: "Claude writes narration, chorus lyric and sections (claude -p).",
+  factcheck: "Claude checks every spoken and on-screen claim with web search; flagged text is revised (max 2 rounds).",
+  direct: "Claude directs each shot: visual system, labels, camera, transitions, accents.",
+  assets: "Resolves illustrations and licensed files; renders optional Blender 3D clips.",
+  audio: "Narration, composed music, sung chorus, SFX, ducking and -14 LUFS mix.",
+  render: "Remotion renders a new candidate (16:9 and 9:16). Old candidates are kept.",
+  qa: "Checks the rendered files: streams, loudness, sampled frames, contact sheets.",
+  package: "Thumbnail and YouTube metadata (chapters, sources, credits).",
 };
+const ST_CLASS = { fresh: "ok", stale: "warn", failed: "bad", missing: "" };
+const ST_TEXT = { fresh: "up to date", stale: "out of date", failed: "failed", missing: "not done" };
+
+function stagePill(v, st) {
+  const s = v.stages?.[st];
+  const running = v.job?.state === "running" && v.job.stage === st;
+  if (running) return pill(STAGE_LABEL[st], "run spin", true, "Running now");
+  if (!s) return pill(STAGE_LABEL[st], "", false, "Status is being computed");
+  return pill(STAGE_LABEL[st], ST_CLASS[s.status], false, `${ST_TEXT[s.status]}: ${s.reason}`);
+}
+
 function jobPill(j) {
   if (!j) return "";
   if (j.state === "running") return pill(STAGE_LABEL[j.stage] ?? j.stage, "run spin", true);
@@ -82,22 +104,11 @@ function jobPill(j) {
 function progressBar(p) {
   if (!p || !p.total) return "";
   const pct = Math.min(100, Math.round((p.done / p.total) * 100));
-  return `<div class="small muted">${esc(p.what)} ${p.done}/${p.total} frames (${pct}%)</div><div class="progress"><div style="width:${pct}%"></div></div>`;
+  return `<div class="small muted">${esc(p.what)} ${p.done}/${p.total} (${pct}%)</div><div class="progress"><div style="width:${pct}%"></div></div>`;
 }
 
-function stagesCells(v) {
-  const spec = v.spec ? pill(`${v.spec.scenes} scenes · ${dur(v.spec.seconds)}`, "ok") : pill("No spec");
-  let fc = pill("Not run");
-  if (v.factcheck) {
-    fc = v.factcheck.flagged
-      ? pill(`${v.factcheck.flagged} flagged`, "bad")
-      : pill(`${v.factcheck.claims} ok`, "ok");
-    if (v.factcheck.stale) fc += " " + pill("spec changed", "warn");
-  }
-  let rd = pill("Not rendered");
-  if (v.render) rd = pill(v.render.main && v.render.short ? "Main + Short" : v.render.main ? "Main only" : "Short only", v.render.stale ? "warn" : "ok") + (v.render.stale ? " " + pill("stale", "warn") : "");
-  return { spec, fc, rd };
-}
+const AUDIO_TEXT = { full: "Full audio", partial: "Partial audio", silent: "Silent preview" };
+const audioPill = (status) => (status ? pill(AUDIO_TEXT[status] ?? status, status === "full" ? "ok" : status === "partial" ? "warn" : "bad") : pill("No audio", "bad"));
 
 // ---------- routing ----------
 
@@ -114,9 +125,7 @@ async function render() {
   const prev = S.route;
   S.route = parseRoute();
   if (prev.name === "video" && (S.route.name !== "video" || S.route.slug !== prev.slug)) {
-    S.spec = null;
-    S.specDirty = false;
-    S.logJobId = null;
+    Object.assign(S, { spec: null, specDirty: false, logJobId: null, cand: null, compare: null, openShot: null });
   }
   $$(".top nav a").forEach((a) => a.classList.toggle("active", a.dataset.nav === (S.route.name === "video" ? "videos" : S.route.name === "job" ? "jobs" : S.route.name)));
   try {
@@ -144,26 +153,24 @@ async function renderVideos() {
   const needsReview = videos.filter((v) => v.status === "review" && v.render);
   app.innerHTML = `
     <div class="pagehead">
-      <div><h1>Videos</h1><div class="sub">Every topic in the backlog plus any spec on disk. ${Object.entries(counts).map(([k, n]) => `${n} ${esc(k)}`).join(" · ")}</div></div>
+      <div><h1>Videos</h1><div class="sub">Every topic in the backlog plus any storyboard on disk. ${Object.entries(counts).map(([k, n]) => `${n} ${esc(k)}`).join(" · ")}</div></div>
       <div class="row"><a href="#/topics"><button>Manage backlog</button></a></div>
     </div>
     ${needsReview.length ? `<div class="panel"><h3>Waiting for your approval</h3><div class="row">${needsReview.map((v) => `<a href="#/video/${esc(v.slug)}/review"><button class="primary">${esc(v.title)}</button></a>`).join("")}</div></div>` : ""}
     <div class="panel tablewrap">
       ${videos.length ? `<table>
-        <thead><tr><th>Video</th><th>Status</th><th>Script</th><th>Fact-check</th><th>Render</th><th>Job</th><th></th></tr></thead>
-        <tbody>${videos.map((v) => {
-          const c = stagesCells(v);
-          return `<tr>
-            <td class="title"><a href="#/video/${esc(v.slug)}">${esc(v.title)}</a><div class="small muted mono">${esc(v.slug)}</div></td>
+        <thead><tr><th>Video</th><th>Status</th><th>Pipeline</th><th>Sound</th><th>Job</th><th></th></tr></thead>
+        <tbody>${videos.map((v) => `<tr>
+            <td class="title"><a href="#/video/${esc(v.slug)}">${esc(v.title)}</a><div class="small muted mono">${esc(v.slug)}${v.spec ? ` · ${v.spec.shots} shots · ${dur(v.spec.seconds)}` : ""}</div></td>
             <td>${statusPill(v.status)}</td>
-            <td>${c.spec}</td><td>${c.fc}</td><td>${c.rd}</td>
-            <td>${v.job ? jobPill(v.job) : v.lastJob ? jobPill(v.lastJob) + `<div class="small muted">${ago(v.lastJob.endedAt)}</div>` : ""}</td>
+            <td><div class="chips">${S.meta.stages.map((st) => stagePill(v, st)).join("")}</div></td>
+            <td>${v.audio ? audioPill(v.audio.main ?? v.audio.short) : pill("—")}</td>
+            <td>${v.job ? jobPill(v.job) + progressBar(v.job.progress) : v.lastJob ? jobPill(v.lastJob) + `<div class="small muted">${ago(v.lastJob.endedAt)}</div>` : ""}</td>
             <td><div class="row" style="justify-content:flex-end">
               <button class="sm" data-run="${esc(v.slug)}" ${v.job ? "disabled" : ""}>Run…</button>
               <a href="#/video/${esc(v.slug)}"><button class="sm ghost">Open</button></a>
             </div></td>
-          </tr>`;
-        }).join("")}</tbody></table>` : `<div class="empty">No topics yet. <a href="#/topics">Add one to the backlog</a>.</div>`}
+          </tr>`).join("")}</tbody></table>` : `<div class="empty">No topics yet. <a href="#/topics">Add one to the backlog</a>.</div>`}
     </div>`;
   bindRunButtons();
 }
@@ -172,33 +179,33 @@ function bindRunButtons(root = app) {
   $$("[data-run]", root).forEach((b) => (b.onclick = () => runDialog(b.dataset.run)));
 }
 
-function runDialog(slug, preset = "full") {
+function startJob(slug, body, okMsg = "Job started") {
+  return act(() => api(`/api/videos/${slug}/run`, { method: "POST", body }), okMsg).then((job) => {
+    S.logJobId = job.id;
+    location.hash = `#/video/${slug}/logs`;
+    if (S.route.name === "video") render();
+    return job;
+  });
+}
+
+function runDialog(slug, preset = "continue") {
   const dlg = document.createElement("dialog");
   dlg.innerHTML = `
     <h2>Run pipeline</h2>
-    <p class="muted small">Runs <code>npm run generate</code> for <b>${esc(slug)}</b> on this Mac, through your logged-in <code>claude</code> CLI. Jobs run one at a time.</p>
+    <p class="muted small">Runs <code>npm run pipeline</code> for <b>${esc(slug)}</b> on this Mac. Claude stages use your logged-in <code>claude</code> CLI. Stages that are already up to date are skipped. Jobs run one at a time.</p>
     ${Object.entries(S.meta.modes).map(([k, label]) => `<label class="check" style="margin:6px 0"><input type="radio" name="mode" value="${k}" ${k === preset ? "checked" : ""}/> ${esc(label)}</label><br/>`).join("")}
-    <label class="check" style="margin:10px 0"><input type="checkbox" name="fresh"/> Write a fresh script (the current spec is moved to <code>out/archive/</code>)</label>
+    <label class="check" style="margin:10px 0 0"><input type="checkbox" name="fresh"/> Write a fresh script (the current storyboard is archived first)</label><br/>
+    <label class="check" style="margin:6px 0 0"><input type="checkbox" name="preview"/> Preview render (half resolution, faster; can't be approved)</label><br/>
+    <label class="check" style="margin:6px 0 0"><input type="checkbox" name="visualReview"/> Ask Claude to inspect the rendered contact sheets (uses subscription)</label>
     <div class="row" style="justify-content:flex-end;margin-top:14px"><button class="ghost" value="cancel">Cancel</button><button class="primary" value="go">Start</button></div>`;
   document.body.append(dlg);
-  const freshBox = $("[name=fresh]", dlg);
-  const syncFresh = () => {
-    const mode = $("[name=mode]:checked", dlg).value;
-    freshBox.disabled = mode === "render";
-    if (mode === "render") freshBox.checked = false;
-  };
-  $$("[name=mode]", dlg).forEach((r) => (r.onchange = syncFresh));
-  syncFresh();
   dlg.addEventListener("close", () => dlg.remove());
   $("[value=cancel]", dlg).onclick = () => dlg.close();
   $("[value=go]", dlg).onclick = async () => {
-    const mode = $("[name=mode]:checked", dlg).value;
+    const body = { mode: $("[name=mode]:checked", dlg).value, fresh: $("[name=fresh]", dlg).checked, preview: $("[name=preview]", dlg).checked, visualReview: $("[name=visualReview]", dlg).checked };
     try {
-      const job = await act(() => api(`/api/videos/${slug}/run`, { method: "POST", body: { mode, fresh: freshBox.checked } }));
       dlg.close();
-      S.logJobId = job.id;
-      location.hash = `#/video/${slug}/logs`;
-      if (S.route.name === "video") render();
+      await startJob(slug, body);
     } catch {}
   };
   dlg.showModal();
@@ -221,10 +228,9 @@ async function renderTopics() {
     </div>
     <div class="panel tablewrap">
       ${topics.length ? `<table>
-        <thead><tr><th>#</th><th>Topic</th><th>Category</th><th>Status</th><th>Progress</th><th></th></tr></thead>
+        <thead><tr><th>#</th><th>Topic</th><th>Category</th><th>Status</th><th>Pipeline</th><th></th></tr></thead>
         <tbody>${topics.map((t, i) => {
           const v = vmap[t.slug];
-          const c = v ? stagesCells(v) : null;
           return `<tr data-slug="${esc(t.slug)}" data-status="${esc(t.status)}">
             <td class="muted">${i + 1}</td>
             <td class="title"><a href="#/video/${esc(t.slug)}">${esc(t.title)}</a>
@@ -232,7 +238,7 @@ async function renderTopics() {
               ${t.chorusIdea ? `<div class="small" style="color:var(--yellow)">♪ ${esc(t.chorusIdea)}</div>` : ""}</td>
             <td>${esc(t.category)}</td>
             <td><select class="statusSel" style="width:auto">${S.meta.statuses.map((s) => `<option ${s === t.status ? "selected" : ""}>${s}</option>`).join("")}</select></td>
-            <td>${c ? `${c.spec} ${c.fc} ${c.rd}` : ""} ${v?.job ? jobPill(v.job) : ""}</td>
+            <td><div class="chips">${v ? S.meta.stages.map((st) => stagePill(v, st)).join("") : ""}</div> ${v?.job ? jobPill(v.job) : ""}</td>
             <td><div class="row" style="justify-content:flex-end;flex-wrap:nowrap">
               <button class="sm icon ghost" data-move="-1" title="Move up" ${i === 0 ? "disabled" : ""}>↑</button>
               <button class="sm icon ghost" data-move="1" title="Move down" ${i === topics.length - 1 ? "disabled" : ""}>↓</button>
@@ -260,7 +266,7 @@ async function renderTopics() {
     const t = topics.find((x) => x.slug === slug);
     $(".statusSel", tr).onchange = (e) => act(() => api(`/api/topics/${slug}`, { method: "PUT", body: { status: e.target.value } }), "Status updated").then(renderTopics, renderTopics);
     $("[data-edit]", tr).onclick = () => topicDialog(t, Boolean(vmap[slug]?.spec));
-    $("[data-del]", tr).onclick = () => confirmDialog(`Delete “${t.title}” from the backlog?`, "Its spec, sources and videos stay on disk.", "Delete", async () => {
+    $("[data-del]", tr).onclick = () => confirmDialog(`Delete “${t.title}” from the backlog?`, "Its storyboard, sources and renders stay on disk.", "Delete", async () => {
       await act(() => api(`/api/topics/${slug}`, { method: "DELETE" }), "Topic deleted");
       renderTopics();
     });
@@ -284,12 +290,12 @@ function topicDialog(t, slugLocked = false) {
   dlg.innerHTML = `
     <h2>${isNew ? "Add topic" : "Edit topic"}</h2>
     <div class="field"><label>Title (phrased as the viewer's question)</label><input name="title" value="${esc(t.title)}" placeholder="Why is the sky blue?" required /></div>
-    <div class="field"><label>Slug ${slugLocked ? "(locked: a spec already uses it)" : ""}</label><input name="slug" class="mono" value="${esc(t.slug)}" ${slugLocked ? "disabled" : ""} /></div>
+    <div class="field"><label>Slug ${slugLocked ? "(locked: a storyboard already uses it)" : ""}</label><input name="slug" class="mono" value="${esc(t.slug)}" ${slugLocked ? "disabled" : ""} /></div>
     <div class="field"><label>Category</label><input name="category" list="cats" value="${esc(t.category)}" placeholder="biology, space, technology…" /></div>
     <div class="field"><label>Hook idea (first 5 seconds)</label><textarea name="angle" rows="2">${esc(t.angle)}</textarea></div>
     <div class="field"><label>Chorus idea (the line that teaches the concept)</label><input name="chorusIdea" value="${esc(t.chorusIdea)}" /></div>
     <div class="field"><label>Status</label><select name="status">${S.meta.statuses.map((s) => `<option ${s === t.status ? "selected" : ""}>${s}</option>`).join("")}</select></div>
-    <div class="field"><label>Notes</label><textarea name="notes" rows="2">${esc(t.notes)}</textarea></div>
+    <div class="field"><label>Notes (passed to the script writer)</label><textarea name="notes" rows="2">${esc(t.notes)}</textarea></div>
     <div class="row" style="justify-content:flex-end"><button class="ghost" value="cancel">Cancel</button><button class="primary" value="save">${isNew ? "Add" : "Save"}</button></div>`;
   document.body.append(dlg);
   const title = $("[name=title]", dlg);
@@ -331,7 +337,7 @@ async function renderJobs() {
   app.innerHTML = `
     <div class="pagehead"><div><h1>Jobs</h1><div class="sub">Pipeline runs since the admin server started. One runs at a time; logs are also saved in <code>out/logs/</code>.</div></div></div>
     <div class="panel tablewrap">${jobs.length ? `<table>
-      <thead><tr><th>#</th><th>Video</th><th>Mode</th><th>State</th><th>Started</th><th>Took</th><th></th></tr></thead>
+      <thead><tr><th>#</th><th>Video</th><th>What</th><th>State</th><th>Started</th><th>Took</th><th></th></tr></thead>
       <tbody>${jobs.map((j) => `<tr>
         <td class="muted">${j.id}</td>
         <td class="title"><a href="#/video/${esc(j.slug)}">${esc(j.title)}</a></td>
@@ -346,7 +352,7 @@ async function renderJobs() {
 }
 
 function bindCancel(root = app) {
-  $$("[data-cancel]", root).forEach((b) => (b.onclick = () => confirmDialog("Cancel this job?", "The running claude or render process is stopped. Files already written stay.", "Cancel job", async () => {
+  $$("[data-cancel]", root).forEach((b) => (b.onclick = () => confirmDialog("Cancel this job?", "The running claude, render or Blender process is stopped. Finished stages and earlier candidates stay; the stopped stage is marked cancelled.", "Cancel job", async () => {
     await act(() => api(`/api/jobs/${b.dataset.cancel}/cancel`, { method: "POST" }), "Cancelled");
     render();
   })));
@@ -365,7 +371,8 @@ async function renderJob() {
 
 const jobHeadHtml = (j) => `${jobPill(j)} <span class="muted small">${elapsed(j.startedAt, j.endedAt)}</span>
   ${j.state === "running" || j.state === "queued" ? `<button class="sm bad" data-cancel="${j.id}">Cancel</button>` : ""}
-  <div style="min-width:220px">${progressBar(j.progress)}</div>`;
+  <div style="min-width:220px">${progressBar(j.progress)}</div>
+  ${j.error ? `<div class="small err" style="flex-basis:100%">${esc(j.error)}${j.hint ? `<div class="muted">${esc(j.hint)}</div>` : ""}</div>` : ""}`;
 
 function setLog(text) {
   const el = $("#log");
@@ -380,32 +387,36 @@ function appendLogText(text) {
   el.textContent += cleanLog(text);
   if (stick) el.scrollTop = el.scrollHeight;
 }
-// Strip ANSI codes; keep only the last \r-overwritten segment of progress lines.
-const cleanLog = (t) => t.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "").replace(/[^\n]*\r(?!\n)/g, "");
+// Strip ANSI codes and machine lines; keep only the last \r-overwritten segment of progress lines.
+const cleanLog = (t) => t.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "").replace(/[^\n]*\r(?!\n)/g, "").replace(/^@@ \{"event":"progress".*\n?/gm, "");
 
 // ---------- video detail ----------
 
-async function loadVideo(slug) {
-  S.video = await api(`/api/videos/${slug}`);
+async function loadVideo(slug, fresh = false) {
+  S.video = await api(`/api/videos/${slug}${fresh ? "?fresh=1" : ""}`);
   if (!S.specDirty) S.spec = S.video.specJson ? structuredClone(S.video.specJson) : null;
   return S.video;
 }
 
+const TABS = [["overview", "Overview"], ["storyboard", "Storyboard"], ["factcheck", "Fact-check"], ["assets", "Assets & audio"], ["quality", "Quality"], ["review", "Review"], ["logs", "Logs"]];
+
 async function renderVideo() {
   const { slug, tab } = S.route;
   const v = await loadVideo(slug);
-  const tabs = [["overview", "Overview"], ["spec", "Spec"], ["factcheck", `Fact-check${v.factcheck?.flagged ? ` (${v.factcheck.flagged})` : ""}`], ["review", "Review"], ["logs", "Logs"]];
+  const tabs = TABS.map(([k, l]) => [k, k === "factcheck" && v.factcheck?.flagged ? `${l} (${v.factcheck.flagged})` : k === "quality" && v.render?.qa ? `${l} · ${v.render.qa.status}` : l]);
   app.innerHTML = `
     <div class="pagehead">
       <div><div class="small muted"><a href="#/videos">Videos</a> / <span class="mono">${esc(slug)}</span></div><h1>${esc(v.title)}</h1></div>
       <div class="row" id="vhead"></div>
     </div>
-    <nav class="tabs">${tabs.map(([k, l]) => `<a href="#/video/${esc(slug)}/${k}" class="${k === tab ? "active" : ""}">${esc(l)}</a>`).join("")}</nav>
+    <nav class="tabs">${tabs.map(([k, l]) => `<a href="#/video/${esc(slug)}/${k}" class="${k === tab || (tab === "spec" && k === "storyboard") ? "active" : ""}">${esc(l)}</a>`).join("")}</nav>
     <div id="tab"></div>`;
   renderVideoHead();
   const body = $("#tab");
-  if (tab === "spec") renderSpecTab(body);
+  if (tab === "storyboard" || tab === "spec") renderStoryboardTab(body);
   else if (tab === "factcheck") renderFactTab(body);
+  else if (tab === "assets") renderAssetsTab(body);
+  else if (tab === "quality") renderQualityTab(body);
   else if (tab === "review") renderReviewTab(body);
   else if (tab === "logs") await renderLogsTab(body);
   else renderOverviewTab(body);
@@ -421,100 +432,109 @@ function renderVideoHead() {
   bindCancel(el);
 }
 
-function stepBox(name, cls, val, extra = "") {
-  return `<div class="step ${cls}"><div class="name">${esc(name)}</div><div class="val">${val}</div>${extra}</div>`;
-}
-
 function renderOverviewTab(body) {
   const v = S.video;
   const j = v.job;
-  const st = j?.stage ?? "";
-  const running = (stages) => j && j.state === "running" && stages.includes(st);
-  const fcCls = !v.factcheck ? "" : v.factcheck.flagged ? "bad" : v.factcheck.stale ? "warn" : "ok";
+  const runs = v.stageRuns ?? {};
+  const latest = v.candidates?.[0];
+  const issues = [...(v.problems ?? []).map((p) => ({ cls: "bad", t: p })), ...(v.lint ?? []).map((p) => ({ cls: "warn", t: p }))];
   body.innerHTML = `
     <div class="panel">
-      <h3>Pipeline</h3>
-      <div class="stepper">
-        ${stepBox("1 · Topic", v.inBacklog ? "ok" : "warn", v.inBacklog ? "In backlog" : "Not in backlog")}
-        ${stepBox("2 · Script", running(["script"]) ? "run" : v.spec ? "ok" : "", running(["script"]) ? "Writing…" : v.spec ? `${v.spec.scenes} scenes · ${dur(v.spec.seconds)}` : "Not written", v.spec ? `<div class="small muted">${ago(v.spec.at)}</div>` : "")}
-        ${stepBox("3 · Fact-check", running(["factcheck", "revise", "spec"]) ? "run" : fcCls, running(["factcheck", "revise", "spec"]) ? (st === "revise" ? "Revising…" : "Checking…") : v.factcheck ? (v.factcheck.flagged ? `${v.factcheck.flagged} of ${v.factcheck.claims} flagged` : `${v.factcheck.claims} claims ok`) : "Not run", v.factcheck ? `<div class="small muted">${v.factcheck.stale ? "spec edited since · " : ""}${ago(v.factcheck.at)}</div>` : "")}
-        ${stepBox("4–5 · Audio", running(["audio", "saved"]) ? "run" : v.spec ? "ok" : "", "Stub (silent)", `<div class="small muted">${v.spec ? `${esc(v.spec.bpm)} bpm` : ""}</div>`)}
-        ${stepBox("7 · Render", running(["render-main", "render-short"]) ? "run" : !v.render ? "" : v.render.stale ? "warn" : "ok", running(["render-main", "render-short"]) ? (st === "render-main" ? "Main video…" : "Short…") : v.render ? `${v.render.main ? "Main" : ""}${v.render.main && v.render.short ? " + " : ""}${v.render.short ? "Short" : ""}` : "Not rendered", (v.render ? `<div class="small muted">${v.render.stale ? "spec edited since · " : ""}${ago(v.render.at)}</div>` : "") + (running(["render-main", "render-short"]) ? progressBar(j.progress) : ""))}
-        ${stepBox("9 · Approval", { approved: "ok", rejected: "bad", review: "warn" }[v.status] ?? "", esc(v.status === "review" ? "Waiting for you" : v.status), v.review?.at ? `<div class="small muted">${ago(Date.parse(v.review.at))}</div>` : "")}
-      </div>
+      <div class="row" style="margin-bottom:10px"><h3 class="grow" style="margin:0">Pipeline</h3>
+        ${v.checkpoint ? `<span class="small muted">Last successful stage: <b>${esc(STAGE_LABEL[v.checkpoint])}</b></span>` : ""}
+        <button class="primary" id="continue" ${j ? "disabled" : ""} title="Runs every stage that is missing or out of date, in order">Continue production</button>
+        <button id="freshBtn" ${j ? "disabled" : ""}>Fresh script…</button></div>
+      <div class="stages">${S.meta.stages.map((st, i) => {
+        const s = v.stages?.[st];
+        const run = runs[st];
+        const external = !j && run?.status === "running";
+        const running = (j?.state === "running" && j.stage === st) || external;
+        const cls = running ? "run" : s ? ST_CLASS[s.status] : "";
+        return `<div class="stage ${cls}">
+          <div class="row"><span class="n">${i + 1}</span><b class="grow">${STAGE_LABEL[st]}</b>${running ? pill("running", "run spin", true) : s ? pill(ST_TEXT[s.status], ST_CLASS[s.status]) : pill("…")}</div>
+          <div class="small" title="${esc(STAGE_HELP[st])}">${esc(external ? "running in another process (e.g. a terminal)" : running ? (j.progress ? `${j.progress.what} ${j.progress.done}/${j.progress.total}` : "working…") : s?.reason ?? "")}</div>
+          ${running && j ? progressBar(j.progress) : ""}
+          ${run?.status === "failed" || run?.status === "cancelled" ? `<div class="small ${run.status === "failed" ? "err" : "muted"}">Last run ${esc(run.status)}${run.error?.message ? `: ${esc(run.error.message.slice(0, 220))}` : ""}${run.error?.hint ? `<div class="muted">${esc(run.error.hint)}</div>` : ""}</div>` : run?.endedAt ? `<div class="small muted">ran ${ago(Date.parse(run.endedAt))}${run.warnings?.length ? ` · ${run.warnings.length} warning(s)` : ""}</div>` : ""}
+          <div class="row" style="margin-top:6px"><button class="sm" data-stage="${st}" ${j ? "disabled" : ""}>Run</button>${st === "render" ? `<button class="sm ghost" data-stage="render" data-preview="1" ${j ? "disabled" : ""}>Preview</button>` : ""}${st === "qa" ? `<button class="sm ghost" data-stage="qa" data-review="1" ${j ? "disabled" : ""} title="Also ask Claude to inspect the contact sheets">+ Claude review</button>` : ""}</div>
+        </div>`;
+      }).join("")}</div>
+      ${j ? `<div style="margin-top:12px">${jobPill(j)} <a href="#/video/${esc(v.slug)}/logs">watch the log</a>${progressBar(j.progress)}</div>` : ""}
+      ${!j && v.lastJob ? `<div style="margin-top:12px" class="small">Last run: ${jobPill(v.lastJob)} ${esc(v.lastJob.modeLabel)} · ${ago(v.lastJob.endedAt)} · <a href="#/jobs/${v.lastJob.id}">log</a>${v.lastJob.error ? `<div class="err">${esc(v.lastJob.error)}${v.lastJob.hint ? `<div class="muted">${esc(v.lastJob.hint)}</div>` : ""}</div>` : ""}</div>` : ""}
     </div>
+    ${issues.length ? `<div class="panel"><h3>Storyboard checks</h3>${issues.map((x) => `<div class="small ${x.cls === "bad" ? "err" : ""}" style="${x.cls === "warn" ? "color:var(--orange)" : ""}">${x.cls === "bad" ? "✕" : "⚠"} ${esc(x.t)}</div>`).join("")}</div>` : ""}
     <div class="grid2">
       <div class="panel">
-        <h3>Run</h3>
-        <p class="small muted">Each run calls <code>npm run generate</code>, which uses your local <code>claude</code> login (no API key). An existing spec is reused unless you ask for a fresh script.</p>
-        <div class="row">
-          <button class="primary" data-mode="full" ${j ? "disabled" : ""}>Full pipeline</button>
-          <button data-mode="spec" ${j ? "disabled" : ""}>${v.spec ? "Re-run fact-check" : "Script + fact-check"}</button>
-          <button data-mode="render" ${j || !v.spec ? "disabled" : ""}>Render only</button>
-        </div>
-        <label class="check" style="margin-top:10px"><input type="checkbox" id="fresh" ${S.fresh ? "checked" : ""} ${v.spec ? "" : "disabled"}/> Fresh script (archive the current spec first)</label>
-        ${j ? `<div style="margin-top:12px">${jobPill(j)} <a href="#/video/${esc(v.slug)}/logs">watch the log</a>${progressBar(j.progress)}</div>` : ""}
-        ${!j && v.lastJob ? `<div style="margin-top:12px" class="small">Last run: ${jobPill(v.lastJob)} ${esc(v.lastJob.modeLabel)} · ${ago(v.lastJob.endedAt)} · <a href="#/jobs/${v.lastJob.id}">log</a>${v.lastJob.error ? `<div class="err">${esc(v.lastJob.error)}</div>` : ""}</div>` : ""}
+        <h3>Latest candidate</h3>
+        ${latest ? `<div class="row">${pill(latest.id, latest.approved ? "ok" : "")} ${latest.preview ? pill("preview", "warn") : ""} ${audioPill(latest.audio?.main ?? latest.audio?.short)} ${latest.qa ? pill(`QA ${latest.qa.status}`, latest.qa.status === "pass" ? "ok" : latest.qa.status === "warn" ? "warn" : "bad") : pill("QA not run")}</div>
+          <div class="small muted" style="margin-top:6px">${esc(latest.qa?.summary ?? "")}</div>
+          <div class="row" style="margin-top:8px"><a href="#/video/${esc(v.slug)}/review"><button class="sm">Review</button></a><a href="#/video/${esc(v.slug)}/quality"><button class="sm ghost">Quality report</button></a></div>`
+        : v.render?.legacy ? `<p class="small muted">Only an old-format render exists (before candidates). <a href="#/video/${esc(v.slug)}/review">Watch it</a> or run the pipeline to make a candidate.</p>` : `<p class="muted small">Nothing rendered yet.</p>`}
+        ${v.approved ? `<p class="small" style="margin-top:8px">Approved: <b>${esc(v.approved)}</b> (kept even when newer renders exist)</p>` : ""}
       </div>
       <div class="panel">
         <h3>Topic</h3>
         ${v.topic ? `
           <div class="field"><label>Hook idea</label>${esc(v.topic.angle) || '<span class="muted">none</span>'}</div>
           <div class="field"><label>Chorus idea</label>${esc(v.topic.chorusIdea) || '<span class="muted">none</span>'}</div>
-          <div class="field"><label>Category</label>${esc(v.topic.category) || '<span class="muted">none</span>'}</div>
+          ${v.specJson?.brief?.learningGoal ? `<div class="field"><label>Learning goal</label>${esc(v.specJson.brief.learningGoal)}</div>` : ""}
           ${v.review?.notes ? `<div class="field"><label>Review notes</label>${esc(v.review.notes)}</div>` : ""}
           <a href="#/topics">Edit in backlog</a>`
-        : `<p class="muted">This spec isn't in the backlog yet. Approving or rejecting it adds it.</p>`}
+        : `<p class="muted">This storyboard isn't in the backlog yet. Approving or rejecting it adds it.</p>`}
       </div>
     </div>`;
-  $("#fresh", body).onchange = (e) => (S.fresh = e.target.checked);
-  $$("[data-mode]", body).forEach((b) => (b.onclick = async () => {
-    const fresh = S.fresh && b.dataset.mode !== "render";
-    const go = async () => {
-      const job = await act(() => api(`/api/videos/${v.slug}/run`, { method: "POST", body: { mode: b.dataset.mode, fresh } }), "Job started");
-      S.fresh = false;
-      S.logJobId = job.id;
-      location.hash = `#/video/${v.slug}/logs`;
-    };
-    if (fresh) confirmDialog("Write a fresh script?", "The current spec is moved to out/archive/ and Claude writes a new one.", "Start", go);
-    else go().catch(() => {});
-  }));
+  $("#continue", body).onclick = () => startJob(v.slug, { mode: "continue" }).catch(() => {});
+  $("#freshBtn", body).onclick = () => confirmDialog("Write a fresh script?", "The current storyboard is archived to out/<slug>/archive/, then Claude writes a new script and the pipeline continues from there. Approved renders are kept.", "Start", () => startJob(v.slug, { mode: "continue", fresh: true }));
+  $$("[data-stage]", body).forEach((b) => (b.onclick = () => startJob(v.slug, { mode: "stage", stage: b.dataset.stage, preview: Boolean(b.dataset.preview), visualReview: Boolean(b.dataset.review) }).catch(() => {})));
 }
 
-// ----- spec editor -----
+// ----- storyboard editor -----
 
-function specSeconds(spec) {
-  if (!spec?.bpm || !Array.isArray(spec.scenes)) return null;
-  return spec.scenes.reduce((n, s) => n + (Number(s.durationBeats) || 0), 0) * (60 / spec.bpm);
-}
+const fieldsFor = {
+  title: ["kicker", "title", "subtitle", "icon"],
+  kinetic: ["style", "lines", "emphasis"],
+  character: ["say", "prop"],
+};
 
-function renderSpecTab(body) {
+function renderStoryboardTab(body) {
   const v = S.video;
   if (!S.spec) {
-    body.innerHTML = `<div class="panel empty">No spec yet. <button class="primary" data-run="${esc(v.slug)}">Run the script stage</button></div>`;
-    bindRunButtons(body);
+    body.innerHTML = `<div class="panel empty">No storyboard yet. <button class="primary" data-stage-run="script">Write the script</button></div>`;
+    $("[data-stage-run]", body).onclick = () => startJob(v.slug, { mode: "direct" }).catch(() => {});
     return;
   }
   const spec = S.spec;
+  const tl = v.timeline;
+  const latestQa = v.candidates?.find((c) => v.qa?.[c.id]);
+  const frames = latestQa ? v.qa[latestQa.id].frames.filter((f) => f.format === "main" && f.pct === 0.5) : [];
+  const thumb = (id) => frames.find((f) => f.shot === id);
+  const selected = new Set(S.selectedShots ?? []);
   body.innerHTML = `
     <div class="panel">
       <div class="row" style="margin-bottom:12px">
-        <div class="grow small muted"><code>specs/${esc(v.slug)}.json</code> · ${spec.scenes?.length ?? 0} scenes · <span id="specDur">${dur(specSeconds(spec))}</span> at ${esc(spec.bpm)} bpm
+        <div class="grow small muted"><code>specs/${esc(v.slug)}.json</code> · storyboard v${esc(v.specRawVersion ?? 2)} · ${spec.shots?.length ?? 0} shots · ${esc(spec.music?.bpm)} bpm ${esc(spec.music?.key ?? "")} ${esc(spec.music?.mode ?? "")} · world ${esc(spec.world ?? "night")} · ${spec.direction?.status === "directed" ? pill("directed", "ok") : pill("draft: not directed yet", "warn")}
           <span id="dirty" class="pill warn" ${S.specDirty ? "" : "hidden"}>unsaved</span></div>
-        <button class="ghost sm" id="toggleRaw">${S.specRaw ? "Form editor" : "Raw JSON"}</button>
+        <button class="ghost sm" id="toggleRaw">${S.specRaw ? "Shot editor" : "Raw JSON"}</button>
+        <button class="ghost sm" id="validate">Validate</button>
         <button class="ghost sm" id="revert" ${S.specDirty ? "" : "disabled"}>Revert</button>
-        <button class="primary" id="saveSpec" ${S.specDirty ? "" : "disabled"}>Save spec</button>
+        <button class="primary" id="saveSpec" ${S.specDirty ? "" : "disabled"}>Save</button>
       </div>
       <div id="specErr" class="err small"></div>
+      <div id="specLint" class="small" style="color:var(--orange)"></div>
       <div id="specBody"></div>
     </div>
-    <p class="small muted">After editing, re-run the fact-check (Overview › Re-run fact-check) and re-render so the video matches the spec.</p>`;
+    <div class="panel">
+      <h3>Targeted regeneration</h3>
+      <p class="small muted">Select shots above, then redirect them with Claude (optionally with notes), or render quick half-resolution previews of just those shots. The rest of the storyboard is kept.</p>
+      <textarea id="redirectNotes" rows="2" placeholder="Notes for the director, e.g. 'use a comparison instead; fewer labels'"></textarea>
+      <div class="row" style="margin-top:8px"><span class="small muted grow" id="selCount">${selected.size} shot(s) selected</span>
+        <button id="redirect" ${v.job || !selected.size ? "disabled" : ""}>Redirect selected shots</button>
+        <button id="previewShots" ${v.job || !selected.size ? "disabled" : ""}>Preview selected shots</button></div>
+    </div>`;
   const markDirty = () => {
     S.specDirty = true;
     $("#dirty").hidden = false;
     $("#saveSpec").disabled = false;
     $("#revert").disabled = false;
-    $("#specDur").textContent = dur(specSeconds(S.spec));
   };
   const sb = $("#specBody");
   if (S.specRaw) {
@@ -531,95 +551,110 @@ function renderSpecTab(body) {
       markDirty();
     };
   } else {
-    renderSpecForm(sb, markDirty);
+    sb.innerHTML = `<div class="shots">${spec.shots.map((s, i) => {
+      const t = tl?.shots?.find((x) => x.id === s.id);
+      const th = thumb(s.id);
+      return `<div class="shot sec-${esc(s.section)} ${S.openShot === s.id ? "open" : ""}" data-id="${esc(s.id)}">
+        <div class="shot-head">
+          <input type="checkbox" class="sel" ${selected.has(s.id) ? "checked" : ""} title="Select for targeted regeneration" />
+          <span class="n">${i + 1}</span>
+          ${th && latestQa ? `<img class="thumb" src="/media/${esc(v.slug)}/c/${esc(latestQa.id)}/qa/${esc(th.file)}" loading="lazy" />` : `<div class="thumb ph">${esc(s.visual?.type)}</div>`}
+          <div class="grow">
+            <div><b>${esc(s.headline ?? s.lyric ?? s.visual?.title ?? s.id)}</b> ${pill(s.visual?.type ?? "?", s.visual?.type === "scene3d" ? "hi" : "")} ${pill(s.section)} ${s.short ? pill("in Short", "run") : ""} ${s.mascot ? pill("mascot") : ""} ${s.camera?.move && s.camera.move !== "static" ? pill(s.camera.move) : ""}</div>
+            <div class="small muted">${esc(s.narration ?? (s.lyric ? `♪ ${s.lyric}` : ""))}</div>
+            <div class="small muted">${t ? `${(t.startFrame / 30).toFixed(1)}s · ${t.bars} bars · ${t.transition}` : ""}${s.purpose ? ` · ${esc(s.purpose)}` : ""}</div>
+          </div>
+          <button class="sm ghost" data-toggle>${S.openShot === s.id ? "Close" : "Edit"}</button>
+        </div>
+        ${S.openShot === s.id ? shotEditor(s) : ""}
+      </div>`;
+    }).join("")}</div>`;
+    $$(".shot", sb).forEach((row) => {
+      const id = row.dataset.id;
+      const shot = spec.shots.find((x) => x.id === id);
+      $("[data-toggle]", row).onclick = () => { S.openShot = S.openShot === id ? null : id; renderStoryboardTab(body); };
+      $(".sel", row).onchange = (e) => {
+        const set = new Set(S.selectedShots ?? []);
+        e.target.checked ? set.add(id) : set.delete(id);
+        S.selectedShots = [...set];
+        $("#selCount").textContent = `${set.size} shot(s) selected`;
+        $("#redirect").disabled = $("#previewShots").disabled = Boolean(v.job) || !set.size;
+      };
+      $$("[data-f]", row).forEach((el) => (el.oninput = () => {
+        const k = el.dataset.f;
+        const val = el.type === "checkbox" ? el.checked : el.type === "number" ? (el.value === "" ? undefined : Number(el.value)) : el.value;
+        if (val === "" || val === undefined || val === false) delete shot[k];
+        else shot[k] = val;
+        markDirty();
+      }));
+      const vis = $("[data-visual]", row);
+      if (vis) vis.oninput = () => {
+        try {
+          shot.visual = JSON.parse(vis.value);
+          $("#specErr").textContent = "";
+          markDirty();
+        } catch (e) {
+          $("#specErr").textContent = `Shot ${id} visual: JSON error: ${e.message}`;
+        }
+      };
+    });
   }
   $("#toggleRaw").onclick = () => {
     if (S.specRaw && $("#specErr").textContent) return toast("Fix the JSON error first", true);
     S.specRaw = !S.specRaw;
-    renderSpecTab(body);
+    renderStoryboardTab(body);
   };
   $("#revert").onclick = () => {
     S.specDirty = false;
     S.spec = structuredClone(S.video.specJson);
-    renderSpecTab(body);
+    renderStoryboardTab(body);
+  };
+  $("#validate").onclick = async () => {
+    const r = await act(() => api(`/api/videos/${v.slug}/validate`, { method: "POST", body: S.spec }));
+    $("#specErr").textContent = r.problems.join("\n");
+    $("#specLint").innerHTML = r.lint.map((l) => `⚠ ${esc(l)}`).join("<br>");
+    if (r.ok) toast(r.lint.length ? `Valid, with ${r.lint.length} suggestion(s)` : "Valid");
   };
   $("#saveSpec").onclick = async () => {
-    if ($("#specErr").textContent.startsWith("JSON")) return toast("Fix the JSON error first", true);
+    if ($("#specErr").textContent.includes("JSON")) return toast("Fix the JSON error first", true);
     try {
-      await api(`/api/videos/${v.slug}/spec`, { method: "PUT", body: S.spec });
-      toast("Spec saved");
+      const r = await api(`/api/videos/${v.slug}/spec`, { method: "PUT", body: S.spec });
+      toast("Storyboard saved (previous version archived)");
       S.specDirty = false;
-      await loadVideo(v.slug);
-      renderSpecTab(body);
+      await loadVideo(v.slug, true);
+      renderStoryboardTab(body);
+      $("#specLint").innerHTML = (r.lint ?? []).map((l) => `⚠ ${esc(l)}`).join("<br>");
       renderVideoHead();
     } catch (e) {
       $("#specErr").textContent = e.message;
     }
   };
+  $("#redirect").onclick = () => {
+    if (S.specDirty) return toast("Save or revert your edits first", true);
+    startJob(v.slug, { mode: "stage", stage: "direct", shots: S.selectedShots, notes: $("#redirectNotes").value }).catch(() => {});
+  };
+  $("#previewShots").onclick = () => {
+    if (S.specDirty) return toast("Save or revert your edits first", true);
+    startJob(v.slug, { mode: "stage", stage: "render", shots: S.selectedShots, preview: true }).catch(() => {});
+  };
 }
 
-function renderSpecForm(sb, markDirty) {
-  const spec = S.spec;
-  const kinds = S.meta.sceneKinds;
-  sb.innerHTML = `
-    <div class="grid2" style="grid-template-columns: 3fr 1fr 1fr">
-      <div class="field"><label>Title</label><input data-k="title" value="${esc(spec.title)}" /></div>
-      <div class="field"><label>BPM</label><input data-k="bpm" type="number" min="40" max="240" value="${esc(spec.bpm)}" /></div>
-      <div class="field"><label>Beat offset (ms)</label><input data-k="beatOffsetMs" type="number" value="${esc(spec.beatOffsetMs ?? "")}" placeholder="0" /></div>
+function shotEditor(s) {
+  const opt = (list, cur) => list.map((x) => `<option ${x === cur ? "selected" : ""}>${esc(x)}</option>`).join("");
+  return `<div class="shot-edit">
+    <div class="grid3">
+      <div class="field"><label>Section</label><select data-f="section">${opt(S.meta.sections, s.section)}</select></div>
+      <div class="field"><label>Min bars</label><input data-f="minBars" type="number" min="1" max="16" value="${esc(s.minBars ?? "")}" placeholder="auto" /></div>
+      <div class="field"><label>Transition in</label><select data-f="transition"><option value="">auto</option>${opt(["cut", "fade", "wipe", "push", "zoom"], s.transition)}</select></div>
     </div>
-    <h3 style="margin-top:8px">Scenes</h3>
-    <div id="scenes">${(spec.scenes ?? []).map((s, i) => `
-      <div class="scene ${esc(s.kind)}" data-i="${i}">
-        <div class="n">${i + 1}</div>
-        <div><select data-s="kind">${kinds.map((k) => `<option ${k === s.kind ? "selected" : ""}>${k}</option>`).join("")}</select></div>
-        <div class="texts">
-          <input data-s="text" value="${esc(s.text)}" placeholder="Big on-screen phrase" />
-          <textarea data-s="caption" rows="2" placeholder="Caption / narration line">${esc(s.caption ?? "")}</textarea>
-        </div>
-        <div><input data-s="durationBeats" type="number" min="1" step="1" value="${esc(s.durationBeats)}" title="Length in beats" /><div class="small muted" style="margin-top:4px">${((Number(s.durationBeats) || 0) * 60 / spec.bpm).toFixed(1)} s</div></div>
-        <div class="acts">
-          <button class="sm icon ghost" data-a="up" title="Move up" ${i === 0 ? "disabled" : ""}>↑</button>
-          <button class="sm icon ghost" data-a="down" title="Move down" ${i === spec.scenes.length - 1 ? "disabled" : ""}>↓</button>
-          <button class="sm icon bad" data-a="del" title="Delete scene">✕</button>
-        </div>
-      </div>`).join("")}</div>
-    <button class="sm" id="addScene">+ Add scene</button>`;
-  $$("[data-k]", sb).forEach((el) => (el.oninput = () => {
-    const k = el.dataset.k;
-    if (el.type === "number") {
-      if (el.value === "" && k === "beatOffsetMs") delete spec[k];
-      else spec[k] = Number(el.value);
-    } else spec[k] = el.value;
-    markDirty();
-  }));
-  $$(".scene", sb).forEach((row) => {
-    const i = Number(row.dataset.i);
-    $$("[data-s]", row).forEach((el) => (el.oninput = () => {
-      const k = el.dataset.s;
-      const scene = spec.scenes[i];
-      if (k === "durationBeats") scene[k] = Number(el.value);
-      else if (k === "caption" && !el.value) delete scene.caption;
-      else scene[k] = el.value;
-      if (k === "kind") row.className = `scene ${el.value}`;
-      markDirty();
-    }));
-    $$("[data-a]", row).forEach((b) => (b.onclick = () => {
-      const a = b.dataset.a;
-      if (a === "del") spec.scenes.splice(i, 1);
-      else {
-        const j = i + (a === "up" ? -1 : 1);
-        [spec.scenes[i], spec.scenes[j]] = [spec.scenes[j], spec.scenes[i]];
-      }
-      markDirty();
-      renderSpecForm(sb, markDirty);
-    }));
-  });
-  $("#addScene", sb).onclick = () => {
-    spec.scenes = spec.scenes ?? [];
-    spec.scenes.push({ kind: "beat", text: "", caption: "", durationBeats: 8 });
-    markDirty();
-    renderSpecForm(sb, markDirty);
-  };
+    <div class="field"><label>Headline (max ~5 words)</label><input data-f="headline" value="${esc(s.headline ?? "")}" /></div>
+    <div class="field"><label>Narration (spoken; changing it re-runs the fact-check and audio)</label><textarea data-f="narration" rows="2">${esc(s.narration ?? "")}</textarea></div>
+    <div class="field"><label>Lyric (sung)</label><input data-f="lyric" value="${esc(s.lyric ?? "")}" /></div>
+    <div class="field"><label>Purpose (editorial, not rendered)</label><input data-f="purpose" value="${esc(s.purpose ?? "")}" /></div>
+    <label class="check"><input type="checkbox" data-f="short" ${s.short ? "checked" : ""}/> Include in the vertical Short</label>
+    <div class="field" style="margin-top:10px"><label>Visual (JSON; type is one of ${esc(Object.keys(S.meta.visuals).join(", "))})</label><textarea class="code" data-visual rows="10" style="min-height:180px">${esc(JSON.stringify(s.visual, null, 2))}</textarea>
+      <div class="small muted">${esc(S.meta.visuals[s.visual?.type] ?? "")}</div></div>
+  </div>`;
 }
 
 // ----- fact-check -----
@@ -630,25 +665,25 @@ function renderFactTab(body) {
   if (!v.sourcesJson) {
     body.innerHTML = `<div class="panel empty">No fact-check yet. ${v.spec ? `<button class="primary" id="runFc">Run fact-check</button>` : "Write the script first."}</div>`;
     const b = $("#runFc", body);
-    if (b) b.onclick = () => act(() => api(`/api/videos/${v.slug}/run`, { method: "POST", body: { mode: "spec" } }), "Fact-check started").then((j) => { S.logJobId = j.id; location.hash = `#/video/${v.slug}/logs`; }, () => {});
+    if (b) b.onclick = () => startJob(v.slug, { mode: "stage", stage: "factcheck" }).catch(() => {});
     return;
   }
   const flagged = claims.filter((c) => c.verdict !== "ok");
   const filter = S.fcFilter ?? (flagged.length ? "flagged" : "all");
   const shown = filter === "flagged" ? flagged : claims;
-  const lastJobFlags = v.lastJob?.flagged?.length && v.lastJob.state === "failed" ? v.lastJob.flagged : null;
+  const fc = v.stages?.factcheck;
   body.innerHTML = `
     <div class="panel">
       <div class="row" style="margin-bottom:12px">
-        <div class="grow">${flagged.length ? pill(`${flagged.length} flagged`, "bad") : pill("All claims ok", "ok")} <span class="muted small">${claims.length} claims · <code>specs/${esc(v.slug)}.sources.json</code> · ${ago(v.factcheck.at)}</span>
-          ${v.factcheck.stale ? pill("spec edited after this check", "warn") : ""}</div>
+        <div class="grow">${flagged.length ? pill(`${flagged.length} flagged`, "bad") : pill("All claims ok", "ok")} <span class="muted small">${claims.length} claims (narration, lyrics, headlines and diagram labels) · <code>specs/${esc(v.slug)}.sources.json</code> · ${ago(v.factcheck.at)}</span>
+          ${fc?.status === "stale" ? pill(fc.reason, "warn") : ""}</div>
         <select id="fcFilter" style="width:auto"><option value="flagged">Flagged only</option><option value="all">All claims</option></select>
-        <button class="sm" id="rerun" ${v.job ? "disabled" : ""}>Re-run fact-check</button>
+        <button class="sm" id="rerun" ${v.job ? "disabled" : ""}>Check new text</button>
       </div>
-      ${lastJobFlags ? `<p class="small err">The last run stopped after the revise limit. Edit the spec to fix these, then re-run.</p>` : ""}
+      <p class="small muted">Only new or edited text is sent to Claude; text that already passed keeps its verdict and sources.</p>
       ${shown.length ? shown.map((c) => `
         <div class="claim ${esc(c.verdict)}">
-          <div class="row"><span class="c grow">${esc(c.claim)}</span>${pill(c.verdict, c.verdict === "ok" ? "ok" : c.verdict === "fix" ? "warn" : "bad")}</div>
+          <div class="row"><span class="c grow">${esc(c.claim)}</span>${c.shot ? pill(c.shot) : ""}${pill(c.verdict, c.verdict === "ok" ? "ok" : c.verdict === "fix" ? "warn" : "bad")}</div>
           ${c.correction ? `<div class="corr small"><b>Correction:</b> ${esc(c.correction)}</div>` : ""}
           ${c.note ? `<div class="small muted">${esc(c.note)}</div>` : ""}
           ${c.sources?.length ? `<ul>${c.sources.map((s) => `<li><a href="${esc(s)}" target="_blank" rel="noopener noreferrer">${esc(s)}</a></li>`).join("")}</ul>` : '<div class="small muted">No sources attached</div>'}
@@ -656,56 +691,193 @@ function renderFactTab(body) {
     </div>`;
   $("#fcFilter", body).value = filter;
   $("#fcFilter", body).onchange = (e) => { S.fcFilter = e.target.value; renderFactTab(body); };
-  $("#rerun", body).onclick = () => act(() => api(`/api/videos/${v.slug}/run`, { method: "POST", body: { mode: "spec" } }), "Fact-check started").then((j) => { S.logJobId = j.id; location.hash = `#/video/${v.slug}/logs`; }, () => {});
+  $("#rerun", body).onclick = () => startJob(v.slug, { mode: "stage", stage: "factcheck" }).catch(() => {});
+}
+
+// ----- assets & audio -----
+
+function renderAssetsTab(body) {
+  const v = S.video;
+  const a = v.assets;
+  const m = v.audioManifest;
+  const env = S.meta.env?.tools;
+  const clips = Object.entries(a?.clips ?? {});
+  body.innerHTML = `
+    <div class="grid2">
+      <div class="panel">
+        <h3>Audio</h3>
+        ${m ? `
+          <div class="row">${Object.entries(m.formats).map(([f, t]) => `${f === "main" ? "16:9" : "9:16"} ${audioPill(t.status)}`).join(" ")} ${v.stages?.audio?.status === "stale" ? pill("out of date", "warn") : ""}</div>
+          <table class="kv small" style="margin-top:10px">
+            <tr><td>Narration</td><td>${esc(m.providers.voice)}</td></tr>
+            <tr><td>Music</td><td>${esc(m.providers.music === "synth" ? "built-in composer (local, original)" : m.providers.music)}</td></tr>
+            <tr><td>Sung chorus</td><td>${esc(m.providers.vocals === "chant" ? "pitched speech on the beat (local)" : m.providers.vocals)}</td></tr>
+            ${Object.entries(m.formats).map(([f, t]) => `<tr><td>${f}</td><td>${dur(t.seconds)} · ${t.loudness ? `${t.loudness.I} LUFS, peak ${t.loudness.TP} dBTP` : "loudness unknown"} · ${Object.entries(t.has).filter(([, x]) => x).map(([k]) => k).join(", ")}</td></tr>`).join("")}
+          </table>
+          ${m.warnings?.length ? m.warnings.map((w) => `<div class="small" style="color:var(--orange)">⚠ ${esc(w)}</div>`).join("") : ""}
+          <div style="margin-top:10px">${Object.entries(m.formats).map(([f, t]) => `<label>Final mix (${f === "main" ? "16:9" : "9:16"})</label><audio controls preload="none" src="/media/${esc(v.slug)}/gen/${esc(String(t.src).split("/").pop())}"></audio>`).join("")}
+          <label style="margin-top:8px">Music only</label><audio controls preload="none" src="/media/${esc(v.slug)}/audio/music-main.wav"></audio></div>
+          <details style="margin-top:8px"><summary class="small muted">Licences and provenance</summary>${m.licenses.map((l) => `<div class="small">${esc(l)}</div>`).join("")}</details>`
+        : `<p class="muted small">No audio yet. Videos are only marked finished with audio; without it a render is a silent preview.</p>`}
+        <div class="small muted" style="margin-top:10px">Voice available: macOS say ${env?.voice?.say ? "yes" : "no"}, ElevenLabs ${env?.voice?.elevenlabs ? "key set" : "not configured"} (optional, paid). Selected: <b>${esc(env?.voice?.selected ?? "?")}</b></div>
+        <div class="row" style="margin-top:10px"><button class="sm" data-stage="audio" ${v.job ? "disabled" : ""}>Rebuild audio</button></div>
+      </div>
+      <div class="panel">
+        <h3>Assets</h3>
+        ${a ? `
+          <div class="small">${a.builtins.length} built-in illustrations: <span class="muted">${esc(a.builtins.join(", "))}</span></div>
+          <div class="small" style="margin-top:6px">${a.items.length ? a.items.map((i) => `<div>${pill(i.status, i.status === "ok" ? "ok" : i.required ? "bad" : "warn")} <b>${esc(i.id)}</b> ${i.required ? "required" : "optional"} · ${esc(i.license ?? "no licence")} · shots ${esc(i.shots.join(", "))}</div>`).join("") : "No external files used."}</div>
+          ${a.missingRequired ? `<div class="err small" style="margin-top:6px">${a.missingRequired} required asset(s) missing: add the file under public/ and an entry with licence and source in assets/manifest.json.</div>` : ""}`
+        : `<p class="muted small">Not resolved yet.</p>`}
+        <h3 style="margin-top:14px">3D clips (optional Blender backend)</h3>
+        <div class="small">Blender: ${env?.blender?.available ? `${esc(env.blender.version)} ${env.blender.enabled ? pill("enabled", "ok") : pill("disabled (BLENDER=off)", "warn")}` : pill("not installed", "warn")}</div>
+        ${clips.length ? clips.map(([id, c]) => Object.entries(c).map(([f, x]) => `<div class="small" style="margin-top:6px">${pill(x.status, x.status === "fallback" ? "warn" : "ok")} <b>${esc(id)}</b> (${f}) ${x.renderSeconds ? `rendered in ${dur(x.renderSeconds)}` : ""} ${x.reason ? `<span class="muted">${esc(x.reason.slice(0, 200))}</span>` : ""}
+          ${x.src ? `<video controls muted preload="none" src="/media/${esc(v.slug)}/3d/${esc(x.src.split("/").pop())}" style="margin-top:4px;max-height:200px"></video>` : ""}</div>`).join("")).join("") : `<div class="small muted">No shot uses a 3D scene.</div>`}
+        <div class="row" style="margin-top:10px"><button class="sm" data-stage="assets" ${v.job ? "disabled" : ""}>Re-resolve assets / re-render 3D</button></div>
+      </div>
+    </div>`;
+  $$("[data-stage]", body).forEach((b) => (b.onclick = () => startJob(v.slug, { mode: "stage", stage: b.dataset.stage }).catch(() => {})));
+}
+
+// ----- quality -----
+
+function renderQualityTab(body) {
+  const v = S.video;
+  const cands = (v.candidates ?? []).filter((c) => v.qa?.[c.id]);
+  if (!cands.length) {
+    body.innerHTML = `<div class="panel empty">No quality report yet. ${v.candidates?.length ? `<button class="primary" data-stage="qa">Run QA on the latest candidate</button>` : "Render a candidate first."}</div>`;
+    const b = $("[data-stage]", body);
+    if (b) b.onclick = () => startJob(v.slug, { mode: "stage", stage: "qa" }).catch(() => {});
+    return;
+  }
+  const id = S.qaCand && v.qa[S.qaCand] ? S.qaCand : cands[0].id;
+  const r = v.qa[id];
+  const sev = { fail: 0, warn: 1, info: 2 };
+  const findings = [...r.findings].sort((a, b) => sev[a.severity] - sev[b.severity]);
+  body.innerHTML = `
+    <div class="panel">
+      <div class="row" style="margin-bottom:10px">
+        <select id="qaCand" style="width:auto">${cands.map((c) => `<option value="${esc(c.id)}" ${c.id === id ? "selected" : ""}>${esc(c.id)}${c.preview ? " (preview)" : ""} · ${esc(v.qa[c.id].status)}</option>`).join("")}</select>
+        <span class="grow">${pill(r.status.toUpperCase(), r.status === "pass" ? "ok" : r.status === "warn" ? "warn" : "bad")} <span class="small muted">${esc(r.summary)}</span></span>
+        <button class="sm" data-stage="qa" ${v.job ? "disabled" : ""}>Re-run QA</button>
+        <button class="sm ghost" data-stage="qa" data-review="1" ${v.job ? "disabled" : ""}>+ Claude review</button>
+      </div>
+      <table class="small">
+        <thead><tr><th></th><th>Check</th><th>Where</th><th>Finding</th><th>Fix belongs to</th></tr></thead>
+        <tbody>${findings.map((f) => `<tr><td>${pill(f.severity, f.severity === "fail" ? "bad" : f.severity === "warn" ? "warn" : "")}</td><td class="mono">${esc(f.check)}</td><td>${esc([f.format, f.shot, f.at != null ? `${f.at.toFixed(1)}s` : ""].filter(Boolean).join(" · "))}</td><td>${esc(f.message)}</td><td>${esc(f.owner ?? "")}</td></tr>`).join("") || `<tr><td colspan="5" class="muted">No findings.</td></tr>`}</tbody>
+      </table>
+    </div>
+    ${r.review ? `<div class="panel"><h3>Claude's review of the frames</h3><p>${esc(r.review.overall)} ${pill(`teaches: ${r.review.teaches}`, r.review.teaches === "yes" ? "ok" : "warn")}</p>
+      <details><summary class="small muted">What it inspected</summary>${r.review.inspected.map((x) => `<div class="small">${esc(x)}</div>`).join("")}</details></div>` : ""}
+    <div class="panel"><h3>Media</h3><table class="small"><tbody>${Object.entries(r.media).map(([f, m]) => `<tr><td>${f}</td><td>${m.width}x${m.height} · ${m.fps} fps · ${m.seconds.toFixed(2)}s (timeline ${m.expectedSeconds.toFixed(2)}s) · ${esc(m.video)} · audio ${esc(m.audio ?? "none")}${m.loudness ? ` · ${m.loudness.I} LUFS` : ""}</td></tr>`).join("")}</tbody></table></div>
+    ${Object.entries(r.sheets).map(([f, s]) => `<div class="panel"><h3>Contact sheet · ${f === "main" ? "16:9" : "9:16"}</h3><a href="/media/${esc(v.slug)}/c/${esc(id)}/qa/${esc(s)}" target="_blank"><img class="sheet" src="/media/${esc(v.slug)}/c/${esc(id)}/qa/${esc(s)}" /></a></div>`).join("")}
+    <div class="panel"><h3>Frames per shot (15% · 50% · 90%)</h3>
+      <div class="framegrid">${groupFrames(r.frames.filter((f) => f.format === "main")).map(([shot, fs]) => `<div><div class="small"><b>${fs[0].index + 1}. ${esc(shot)}</b> <span class="muted">${esc(fs[0].type)}</span></div><div class="row">${fs.map((f) => `<img src="/media/${esc(v.slug)}/c/${esc(id)}/qa/${esc(f.file)}" loading="lazy" />`).join("")}</div></div>`).join("")}</div></div>`;
+  $("#qaCand", body).onchange = (e) => { S.qaCand = e.target.value; renderQualityTab(body); };
+  $$("[data-stage]", body).forEach((b) => (b.onclick = () => startJob(v.slug, { mode: "stage", stage: "qa", visualReview: Boolean(b.dataset.review) }).catch(() => {})));
+}
+
+function groupFrames(frames) {
+  const m = new Map();
+  for (const f of frames) m.set(f.shot, [...(m.get(f.shot) ?? []), f]);
+  return [...m.entries()];
 }
 
 // ----- review / approval -----
 
+function candidateMedia(v, c, format) {
+  if (!c) return "";
+  return c.files[format] ? `<video ${format === "short" ? 'class="vertical"' : ""} controls preload="metadata" src="/media/${esc(v.slug)}/c/${esc(c.id)}/${format}.mp4"></video>` : '<div class="empty">Not rendered</div>';
+}
+
 function renderReviewTab(body) {
   const v = S.video;
-  if (!v.render) {
-    body.innerHTML = `<div class="panel empty">Nothing rendered yet. ${v.spec ? `<button class="primary" id="renderNow" ${v.job ? "disabled" : ""}>Render now</button>` : "Write the script first."}</div>`;
+  const cands = (v.candidates ?? []).filter((c) => c.files.main || c.files.short);
+  if (!cands.length) {
+    if (v.render?.legacy) {
+      body.innerHTML = `<div class="panel" style="border-color:var(--orange)"><div style="color:var(--orange)">⚠ This is an old-format render made before candidates, storyboards and audio. Run the pipeline to make a reviewable candidate.</div></div>
+        <div class="videos"><div class="panel"><h3>Main video (16:9)</h3>${v.render.main ? `<video controls preload="metadata" src="/media/${esc(v.slug)}.mp4"></video>` : ""}</div>
+        <div class="panel"><h3>Short (9:16)</h3>${v.render.short ? `<video class="vertical" controls preload="metadata" src="/media/${esc(v.slug)}-short.mp4"></video>` : ""}</div></div>`;
+      return;
+    }
+    body.innerHTML = `<div class="panel empty">Nothing rendered yet. ${v.spec ? `<button class="primary" id="renderNow" ${v.job ? "disabled" : ""}>Continue production</button>` : "Write the script first."}</div>`;
     const b = $("#renderNow", body);
-    if (b) b.onclick = () => act(() => api(`/api/videos/${v.slug}/run`, { method: "POST", body: { mode: "render" } }), "Render started").then((j) => { S.logJobId = j.id; location.hash = `#/video/${v.slug}/logs`; }, () => {});
+    if (b) b.onclick = () => startJob(v.slug, { mode: "continue" }).catch(() => {});
     return;
   }
-  const bust = `?t=${Math.round(v.render.at)}`;
+  const c = cands.find((x) => x.id === S.cand) ?? cands[0];
+  const cmp = S.compare ? cands.find((x) => x.id === S.compare) : null;
+  const qa = v.qa?.[c.id];
   const warnings = [];
+  if (c.preview) warnings.push("This is a half-resolution preview: it can't be approved.");
+  if (!c.audio || Object.values(c.audio).some((s) => s !== "full")) warnings.push(`Audio: ${Object.entries(c.audio ?? {}).map(([f, s]) => `${f} ${AUDIO_TEXT[s] ?? s}`).join(", ") || "silent"}.`);
   if (v.factcheck?.flagged) warnings.push(`${v.factcheck.flagged} fact-check claim(s) are still flagged.`);
-  if (!v.factcheck) warnings.push("The fact-check has not run for this video.");
-  if (v.factcheck?.stale) warnings.push("The spec changed after the last fact-check.");
-  if (v.render.stale) warnings.push("The spec changed after this render; re-render to see the latest.");
+  if (v.stages?.factcheck?.status === "stale") warnings.push("Some on-screen or spoken text hasn't been fact-checked yet.");
+  if (c.id === cands[0].id && v.stages?.render?.status === "stale") warnings.push(`This candidate is out of date: ${v.stages.render.reason}.`);
+  if (!qa) warnings.push("QA hasn't run on this candidate.");
+  else if (qa.status === "fail") warnings.push(`QA failed: ${qa.summary}`);
+  const pkg = v.package?.[c.id];
   body.innerHTML = `
-    ${warnings.length ? `<div class="panel" style="border-color:var(--orange)">${warnings.map((w) => `<div style="color:var(--orange)">⚠ ${esc(w)}</div>`).join("")}</div>` : ""}
-    <div class="videos">
-      <div class="panel"><h3>Main video (16:9)</h3>${v.render.main ? `<video id="vmain" controls preload="metadata" src="/media/${esc(v.slug)}.mp4${bust}"></video>` : '<div class="empty">Not rendered</div>'}</div>
-      <div class="panel"><h3>Short (9:16)</h3>${v.render.short ? `<video class="vertical" controls preload="metadata" src="/media/${esc(v.slug)}-short.mp4${bust}"></video>` : '<div class="empty">Not rendered</div>'}</div>
-    </div>
     <div class="panel">
-      <div class="row" style="margin-bottom:10px"><h3 class="grow" style="margin:0">Your decision</h3>
+      <div class="row">
+        <label class="small" style="margin:0">Candidate</label>
+        <select id="candSel" style="width:auto">${cands.map((x) => `<option value="${esc(x.id)}" ${x.id === c.id ? "selected" : ""}>${esc(x.id)}${x.preview ? " · preview" : ""}${x.approved ? " · APPROVED" : x.review ? ` · ${x.review.decision}` : ""}</option>`).join("")}</select>
+        <label class="small" style="margin:0 0 0 12px">Compare with</label>
+        <select id="cmpSel" style="width:auto"><option value="">nothing</option>${cands.filter((x) => x.id !== c.id).map((x) => `<option value="${esc(x.id)}" ${x.id === S.compare ? "selected" : ""}>${esc(x.id)}${x.approved ? " · APPROVED" : ""}</option>`).join("")}</select>
+        <span class="grow"></span>${audioPill(c.audio?.main ?? c.audio?.short)} ${qa ? pill(`QA ${qa.status}`, qa.status === "pass" ? "ok" : qa.status === "warn" ? "warn" : "bad") : ""}
+      </div>
+    </div>
+    ${warnings.length ? `<div class="panel" style="border-color:var(--orange)">${warnings.map((w) => `<div style="color:var(--orange)">⚠ ${esc(w)}</div>`).join("")}</div>` : ""}
+    ${cmp ? `<div class="grid2">
+        <div class="panel"><h3>${esc(c.id)}</h3>${candidateMedia(v, c, "main")}</div>
+        <div class="panel"><h3>${esc(cmp.id)} ${cmp.approved ? pill("approved", "ok") : ""}</h3>${candidateMedia(v, cmp, "main")}</div>
+      </div><div class="small muted" style="margin:-8px 0 12px">Players are linked: play, pause and seek together.</div>`
+    : `<div class="videos">
+        <div class="panel"><h3>Main video (16:9)</h3>${candidateMedia(v, c, "main")}</div>
+        <div class="panel"><h3>Short (9:16)</h3>${candidateMedia(v, c, "short")}</div>
+      </div>`}
+    <div class="panel">
+      <div class="row" style="margin-bottom:10px"><h3 class="grow" style="margin:0">Your decision on ${esc(c.id)}</h3>
         <span class="small muted">Playback speed</span>${[1, 1.5, 2].map((r) => `<button class="sm ghost" data-rate="${r}">${r}×</button>`).join("")}</div>
-      <div class="small muted" style="margin-bottom:8px">Current: ${statusPill(v.status)} ${v.review?.at ? `${esc(v.review.decision)} ${ago(Date.parse(v.review.at))}` : ""}</div>
-      <textarea id="notes" rows="3" placeholder="Notes (what to fix, if rejecting)">${esc(v.review?.notes ?? "")}</textarea>
+      <div class="small muted" style="margin-bottom:8px">Topic: ${statusPill(v.status)} ${v.review?.at ? `${esc(v.review.decision)} ${ago(Date.parse(v.review.at))}` : ""} ${c.review ? `· this candidate: ${esc(c.review.decision)} ${ago(Date.parse(c.review.at))}` : ""}</div>
+      <textarea id="notes" rows="3" placeholder="Notes (what to fix, if rejecting). They are passed to the script writer on a fresh script.">${esc(c.review?.notes ?? v.review?.notes ?? "")}</textarea>
       <div class="row" style="margin-top:10px">
-        <button class="good" data-decide="approved">Approve</button>
+        <button class="good" data-decide="approved" ${c.preview ? "disabled" : ""}>Approve this candidate</button>
         <button class="bad" data-decide="rejected">Reject with notes</button>
         ${v.status === "approved" || v.status === "rejected" ? `<button class="ghost" data-decide="review">Back to review</button>` : ""}
         <span class="grow"></span>
-        <button class="sm" id="rerender" ${v.job ? "disabled" : ""}>Re-render</button>
+        <button class="sm" id="rerender" ${v.job ? "disabled" : ""}>Render a new candidate</button>
       </div>
-    </div>`;
-  $$("[data-rate]", body).forEach((b) => (b.onclick = () => $$("video", body).forEach((vid) => (vid.playbackRate = Number(b.dataset.rate)))));
-  $$("video", body).forEach((vid) => vid.addEventListener("loadedmetadata", () => (vid.playbackRate = 2), { once: true }));
+    </div>
+    ${pkg ? `<div class="panel"><h3>Package</h3><div class="row" style="align-items:flex-start"><img src="/media/${esc(v.slug)}/c/${esc(c.id)}/package/thumbnail.png" style="width:320px;border-radius:8px" />
+      <div class="grow"><div><b>${esc(pkg.title)}</b></div><pre class="small" style="white-space:pre-wrap;max-height:240px;overflow:auto">${esc(pkg.description)}</pre><div class="small muted">Tags: ${esc(pkg.tags.join(", "))}</div><div class="small" style="color:var(--orange)">${esc(pkg.upload.note)}</div></div></div></div>` : ""}`;
+  $("#candSel", body).onchange = (e) => { S.cand = e.target.value; renderReviewTab(body); };
+  $("#cmpSel", body).onchange = (e) => { S.compare = e.target.value || null; renderReviewTab(body); };
+  const vids = $$("video", body);
+  $$("[data-rate]", body).forEach((b) => (b.onclick = () => vids.forEach((vid) => (vid.playbackRate = Number(b.dataset.rate)))));
+  vids.forEach((vid) => vid.addEventListener("loadedmetadata", () => (vid.playbackRate = 2), { once: true }));
+  if (cmp && vids.length === 2) linkPlayers(vids[0], vids[1]);
   $$("[data-decide]", body).forEach((b) => (b.onclick = async () => {
     const decision = b.dataset.decide;
     const notes = $("#notes", body).value;
     if (decision === "rejected" && !notes.trim()) return toast("Add a note saying what to fix", true);
-    await act(() => api(`/api/videos/${v.slug}/review`, { method: "POST", body: { decision, notes } }), decision === "approved" ? "Approved" : decision === "rejected" ? "Rejected" : "Moved back to review").catch(() => {});
+    await act(() => api(`/api/videos/${v.slug}/review`, { method: "POST", body: { decision, notes, candidate: c.id } }), decision === "approved" ? "Approved" : decision === "rejected" ? "Rejected" : "Moved back to review").catch(() => {});
     await loadVideo(v.slug);
     renderVideoHead();
     renderReviewTab(body);
   }));
-  $("#rerender", body).onclick = () => act(() => api(`/api/videos/${v.slug}/run`, { method: "POST", body: { mode: "render" } }), "Render started").then((j) => { S.logJobId = j.id; location.hash = `#/video/${v.slug}/logs`; }, () => {});
+  $("#rerender", body).onclick = () => startJob(v.slug, { mode: "continue" }).catch(() => {});
+}
+
+function linkPlayers(a, b) {
+  let busy = false;
+  const sync = (src, dst) => {
+    src.addEventListener("play", () => { if (!busy) { busy = true; dst.play(); busy = false; } });
+    src.addEventListener("pause", () => { if (!busy) { busy = true; dst.pause(); busy = false; } });
+    src.addEventListener("seeked", () => { if (!busy && Math.abs(dst.currentTime - src.currentTime) > 0.3) { busy = true; dst.currentTime = src.currentTime; busy = false; } });
+  };
+  sync(a, b);
+  sync(b, a);
 }
 
 // ----- logs -----
@@ -724,14 +896,16 @@ async function renderLogsTab(body) {
         <select id="jobSel" style="width:auto">${v.jobs.map((x) => `<option value="${x.id}" ${x.id === j.id ? "selected" : ""}>#${x.id} · ${esc(x.modeLabel)} · ${esc(x.state)}</option>`).join("")}</select>
         <div class="row grow" id="jobHead">${jobHeadHtml(j)}</div>
       </div>
+      <div class="chips" id="jobStages" style="margin-bottom:8px">${jobStagesHtml(j)}</div>
       ${j.flagged?.length ? `<div class="small" style="margin-bottom:8px">${pill(`${j.flagged.length} flagged in this run`, "warn")} <a href="#/video/${esc(v.slug)}/factcheck">see fact-check</a></div>` : ""}
-      ${j.error ? `<div class="small err" style="margin-bottom:8px">${esc(j.error)}</div>` : ""}
       <pre class="log" id="log"></pre>
     </div>`;
   setLog(j.log);
   bindCancel(body);
   $("#jobSel", body).onchange = (e) => { S.logJobId = Number(e.target.value); renderLogsTab(body); };
 }
+
+const jobStagesHtml = (j) => Object.entries(j.stages ?? {}).map(([st, x]) => pill(`${STAGE_LABEL[st] ?? st}: ${x.cached ? "cached" : x.status}`, x.status === "done" ? "ok" : x.status === "running" ? "run spin" : x.status === "failed" ? "bad" : "warn", x.status === "running", x.summary ?? x.error ?? "")).join("");
 
 // ---------- live updates ----------
 
@@ -740,20 +914,20 @@ function softRefresh() {
   clearTimeout(refreshTimer);
   refreshTimer = setTimeout(async () => {
     const r = S.route;
-    if (r.name === "videos" || r.name === "jobs") return render();
-    if (r.name === "topics" && !document.querySelector("dialog[open]")) return render();
+    if (document.querySelector("dialog[open]")) return;
+    if (r.name === "videos" || r.name === "jobs" || r.name === "topics") return render();
     if (r.name === "video") {
-      const before = S.video;
       await loadVideo(r.slug);
       renderVideoHead();
       const tab = $("#tab");
       if (!tab) return;
       if (r.tab === "overview") renderOverviewTab(tab);
-      else if (r.tab === "factcheck" && before?.factcheck?.at !== S.video.factcheck?.at) renderFactTab(tab);
-      else if (r.tab === "review" && (before?.render?.at !== S.video.render?.at || before?.status !== S.video.status)) renderReviewTab(tab);
-      else if (r.tab === "spec" && !S.specDirty && before?.spec?.at !== S.video.spec?.at) renderSpecTab(tab);
+      else if (r.tab === "factcheck") renderFactTab(tab);
+      else if (r.tab === "assets") renderAssetsTab(tab);
+      else if (r.tab === "quality") renderQualityTab(tab);
+      else if ((r.tab === "storyboard" || r.tab === "spec") && !S.specDirty && !S.openShot) renderStoryboardTab(tab);
     }
-  }, 250);
+  }, 300);
 }
 
 function updateJobBadge(jobs) {
@@ -776,26 +950,30 @@ function connect() {
     if ((S.route.name === "job" && S.route.id === j.id) || (S.route.name === "video" && S.route.tab === "logs" && S.logJobId === j.id)) {
       const h = $("#jobHead");
       if (h) { h.innerHTML = jobHeadHtml(j); bindCancel(h); }
+      const st = $("#jobStages");
+      if (st) st.innerHTML = jobStagesHtml(j);
       const opt = $(`#jobSel option[value="${j.id}"]`);
       if (opt) opt.textContent = `#${j.id} · ${j.modeLabel} · ${j.state}`;
     }
     if (S.route.name === "video" && S.route.tab === "logs" && S.route.slug === j.slug && !$("#log")) return render();
     if (S.route.name === "job" || (S.route.name === "video" && S.route.slug !== j.slug)) return;
     if (S.route.name === "video" && S.route.tab === "logs") {
-      // A new job for this video: refresh the selector so it shows up.
       if (!$(`#jobSel option[value="${j.id}"]`)) { S.logJobId = j.id; return render(); }
       return loadVideo(S.route.slug).then(renderVideoHead);
     }
-    softRefresh();
+    if (S.route.name === "video" && S.route.tab === "overview") return softRefresh();
+    if (S.route.name === "videos") softRefresh();
   });
   es.addEventListener("log", (e) => {
     const { id, text } = JSON.parse(e.data);
     if (S.logJobId === id && (S.route.name === "job" || (S.route.name === "video" && S.route.tab === "logs"))) appendLogText(text);
   });
-  es.addEventListener("videos", () => {
-    if (S.route.name === "video" && S.route.tab === "logs") return loadVideo(S.route.slug).then(renderVideoHead);
+  const onVideos = () => {
+    if (S.route.name === "video" && (S.route.tab === "logs" || S.route.tab === "review")) return loadVideo(S.route.slug).then(renderVideoHead);
     if (S.route.name !== "job") softRefresh();
-  });
+  };
+  es.addEventListener("videos", onVideos);
+  es.addEventListener("status", onVideos);
 }
 
 // ---------- boot ----------
@@ -816,8 +994,9 @@ function connect() {
   }
   connect();
   render();
-  setInterval(() => {
-    // Keep "x min ago" and elapsed times fresh on list pages.
+  setInterval(async () => {
+    // Keep "x min ago" fresh on list pages, and tool availability current.
     if ((S.route.name === "videos" || S.route.name === "jobs") && !document.querySelector("dialog[open]")) render();
+    if (!S.meta.env?.tools) S.meta = await api("/api/meta").catch(() => S.meta);
   }, 30000);
 })();

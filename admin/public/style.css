@@ -138,3 +138,36 @@ dialog::backdrop { background: rgba(0,0,0,.55); }
   .top nav { order: 3; flex-basis: 100%; }
   main { padding: 16px; }
 }
+
+/* Production cockpit */
+.chips { display: flex; gap: 4px; flex-wrap: wrap; }
+.chips .pill { font-size: 11px; padding: 1px 7px; }
+.stages { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
+.stage { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; }
+.stage .n { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--bg); color: var(--muted); font-size: 11px; font-weight: 700; }
+.stage.ok { border-color: rgba(74,222,128,.4); }
+.stage.warn { border-color: rgba(251,146,60,.55); }
+.stage.bad { border-color: rgba(248,113,113,.6); }
+.stage.run { border-color: var(--teal); }
+.shots { display: grid; gap: 8px; }
+.shot { border: 1px solid var(--line); border-left: 4px solid var(--muted); border-radius: 8px; background: var(--panel-2); }
+.shot.sec-intro, .shot.sec-outro { border-left-color: var(--pink); }
+.shot.sec-verse { border-left-color: var(--teal); }
+.shot.sec-chorus { border-left-color: var(--yellow); }
+.shot.sec-bridge { border-left-color: var(--orange); }
+.shot.open { border-color: var(--yellow); }
+.shot-head { display: flex; gap: 10px; align-items: center; padding: 8px 10px; }
+.shot-head .sel { width: auto; }
+.shot-head .n { color: var(--muted); font-weight: 700; width: 22px; text-align: center; }
+.thumb { width: 128px; height: 72px; object-fit: cover; border-radius: 6px; background: var(--bg); flex: none; }
+.thumb.ph { display: grid; place-items: center; color: var(--muted); font-size: 11px; border: 1px dashed var(--line); }
+.shot-edit { padding: 4px 14px 14px; border-top: 1px solid var(--line); }
+.grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+table.kv td { padding: 4px 8px; border: none; }
+table.kv td:first-child { color: var(--muted); width: 110px; }
+img.sheet { width: 100%; border-radius: 8px; display: block; }
+.framegrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 12px; }
+.framegrid img { width: 32%; border-radius: 4px; }
+audio { width: 100%; margin-top: 4px; }
+details summary { cursor: pointer; }
+@media (max-width: 760px) { .grid3 { grid-template-columns: 1fr; } .thumb { width: 96px; height: 54px; } }
