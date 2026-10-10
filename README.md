@@ -17,14 +17,18 @@ src/                    Remotion project (React -> MP4)
   theme.ts              Palette, fonts, easing: chosen once, reused everywhere
   components/           Reusable library: Mascot, BeatFlash, TextPop, ...
 scripts/generate.ts     Script-to-video generator (topic -> spec -> render)
+scripts/claude.ts       Runs `claude -p` locally (subscription, no API key)
+scripts/providers/      Swappable music/voice providers (stub by default)
+prompts/                Prompts for the script and fact-check stages
 ```
 
 ## Quick start
 
 ```bash
 npm install
+claude --version   # Claude Code CLI, logged in with your subscription (no API key)
 npm run studio                                      # preview in the browser
-npm run generate -- "How does the internet work?"   # topic -> specs/<slug>.json (stubbed)
+npm run generate -- "How does the internet work?"   # topic -> specs/<slug>.json (needs `claude` CLI logged in)
 npm run generate -- "How does the internet work?" --render   # ...and render out/<slug>.mp4
 ```
 
@@ -38,10 +42,10 @@ Topic queue -> Script + lyrics -> Fact-check -> Song -> Voiceover -> Animation c
 | # | Stage | What does it | Notes |
 |---|-------|--------------|-------|
 | 1 | Topic selection | Claude + YouTube search data / Google Trends | Keep a backlog of about 50 topics in `topics/backlog.json` (or a Notion database) |
-| 2 | Script | Claude API | Hook in the first 5 seconds, 3–4 "beats", a catchy chorus that holds the key idea, and a recap. Two versions: a 60s Short and a 3–5 min main video |
-| 3 | Fact-check | A second Claude pass with web search | Checks every claim and attaches sources. Don't skip this: wrong facts sink an educational channel |
-| 4 | Music | ElevenLabs Music API, or Suno/Udio | ElevenLabs has an official API. Suno and Udio mostly don't, and third-party wrappers break their terms. Check the commercial-use license on every tool |
-| 5 | Narration | ElevenLabs TTS | Gives word-level timestamps, so the animation can sync to the speech |
+| 2 | Script | Claude Code (`claude -p`, local) | Hook in the first 5 seconds, 3–4 "beats", a catchy chorus that holds the key idea, and a recap. Two versions: a 60s Short and a 3–5 min main video |
+| 3 | Fact-check | A second `claude -p` pass with web search | Checks every claim and attaches sources. Don't skip this: wrong facts sink an educational channel |
+| 4 | Music | Optional stub for now; later ElevenLabs Music API, or Suno/Udio | ElevenLabs has an official API. Suno and Udio mostly don't, and third-party wrappers break their terms. Check the commercial-use license on every tool |
+| 5 | Narration | Optional stub for now; later ElevenLabs TTS | Gives word-level timestamps, so the animation can sync to the speech |
 | 6 | Animation | Remotion (React -> MP4) | Claude writes scenes from a reusable library: mascot, transitions, text pops, particle bursts, beat-synced effects. Manim suits math and physics |
 | 7 | Render | Remotion CLI locally, or Remotion Lambda | A few minutes per video |
 | 8 | Self-review | Claude looks at sampled frames | Catches overlapping text, off-screen items and timing problems, then re-renders |
@@ -69,14 +73,15 @@ See [docs/pipeline.md](docs/pipeline.md) for inputs, outputs and file formats pe
 
 ## Rough costs
 
+The Claude steps (script, fact-check, animation code, self-review) run on the existing **Claude Code subscription**, locally, through the `claude` CLI in headless mode (`claude -p`). No Anthropic API key and no per-token billing. The trade-off: it runs on the local Mac, and heavy use counts against the subscription's usage limits.
+
 | Item | Cost |
 |------|------|
-| Claude API (script, fact-check, code, review) | A few dollars or less per video |
-| ElevenLabs voice + music | About $22–99/month, depending on volume |
+| Claude steps (script, fact-check, code, review) | $0 extra: covered by the Claude Code subscription (usage limits apply) |
+| ElevenLabs voice + music | Deferred. Experimental and cost-sensitive, so it is an optional, swappable stub for now (`scripts/providers/`) |
 | Rendering | Free locally, or cents on Lambda |
-| **Total** | **About $30–100/month for 10–15 videos** |
 
-These are estimates; check each provider's current pricing.
+Everything runs fine without ElevenLabs: with the stub provider, videos render silent with beat timing from the spec's `bpm`. Check each provider's current pricing before turning one on.
 
 ## Rollout
 

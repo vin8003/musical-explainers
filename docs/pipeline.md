@@ -21,6 +21,17 @@ src/ (Remotion)              6. Explainer composition renders the spec
 YouTube                      11. videos.insert with publishAt (status: scheduled)
 ```
 
+## Running Claude locally (no API key)
+
+All Claude steps shell out to the Claude Code CLI in headless mode, using the logged-in subscription:
+
+```bash
+claude -p "$(cat prompts/script.md) Topic: ..." --output-format json --model sonnet
+claude -p "$(cat prompts/factcheck.md)" --allowedTools WebSearch,WebFetch --output-format json
+```
+
+`scripts/claude.ts` wraps this (stdin prompt, JSON result, retry once on invalid output). Do not set `ANTHROPIC_API_KEY`: if it is set, the CLI may bill the API instead of the subscription. Interactive alternative: run the same prompts as slash commands or skills inside a normal Claude Code session in this repo. Heavy batches count against subscription usage limits, so queue a few videos at a time rather than a large batch.
+
 ## 1. Topic selection
 
 - **Input:** YouTube search suggestions, Google Trends, past analytics.
@@ -31,26 +42,26 @@ YouTube                      11. videos.insert with publishAt (status: scheduled
 
 ## 2. Script + lyrics
 
-- **Tool:** Claude API.
+- **Tool:** `claude -p` (Claude Code headless, local, subscription). Prompt in `prompts/script.md`; the spec JSON is parsed from stdout and validated against `VideoSpec`.
 - **Output:** `specs/<slug>.json` (see `src/types.ts` for the `VideoSpec` shape).
 - Structure: a hook in the first 5 seconds, 3–4 beats (one idea each), a chorus that states the key idea and repeats, and a recap.
 - Two cuts from one spec: a 60s vertical Short and a 3–5 min main video.
 
 ## 3. Fact-check
 
-- **Tool:** a second, independent Claude pass with web search.
+- **Tool:** a second, independent `claude -p` run with `--allowedTools WebSearch,WebFetch`. Prompt in `prompts/factcheck.md`.
 - **Output:** `specs/<slug>.sources.json`, one entry per claim with `claim`, `verdict` (`ok` / `fix` / `cut`) and `sources[]`.
 - Any `fix` or `cut` sends the spec back to stage 2. Nothing moves on with unresolved claims.
 
 ## 4. Music
 
-- **Tool:** ElevenLabs Music API (official API). Suno/Udio only if used by hand under a plan that allows commercial use; don't use unofficial API wrappers.
+- **Tool:** optional and swappable (`scripts/providers/`). Default is a stub that produces no audio, so videos render silent on the spec's `bpm`. Costing for ElevenLabs is deferred. If enabled later: ElevenLabs Music API (official API). Suno/Udio only if used by hand under a plan that allows commercial use; don't use unofficial API wrappers.
 - **Output:** `assets/<slug>/song.mp3`, plus `bpm` and `beatOffsetMs` in the spec.
 - Record the tool, plan and license terms per track, in case of a Content ID dispute.
 
 ## 5. Narration
 
-- **Tool:** ElevenLabs TTS with timestamps.
+- **Tool:** optional and swappable provider, stub by default. If enabled later: ElevenLabs TTS with timestamps.
 - **Output:** `assets/<slug>/voice.mp3` and per-word timings in the spec, so text pops land on the spoken word.
 
 ## 6. Animation
@@ -66,6 +77,7 @@ YouTube                      11. videos.insert with publishAt (status: scheduled
 
 ## 8. Self-review
 
+- Run as a `claude -p` call that is given the still image paths to inspect.
 - Render stills at fixed intervals plus every beat boundary (`npx remotion still`), and have Claude inspect them for overlapping or clipped text, off-screen elements, unreadable contrast, and audio/visual drift.
 - Fix and re-render, with a cap on attempts before escalating to a human.
 

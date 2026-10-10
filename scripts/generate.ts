@@ -3,12 +3,14 @@
 //   npm run generate -- "How does the internet work?"           -> specs/<slug>.json
 //   npm run generate -- "How does the internet work?" --render  -> also out/<slug>.mp4
 //
-// Each stage is a function below. Stages that call external services are stubs
-// for now; they return placeholder data so the whole chain runs end to end.
+// Claude stages run through the local `claude` CLI (subscription, no API key).
+// Music/voice go through a swappable provider that defaults to a free stub.
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { VideoSpec } from "../src/types";
+import { claudeJson } from "./claude";
+import { getAudioProvider } from "./providers";
 
 const ROOT = join(import.meta.dirname, "..");
 
@@ -25,38 +27,32 @@ function findTopic(title: string): BacklogTopic | undefined {
   return backlog.topics.find((t) => t.slug === slug || t.title.toLowerCase() === title.toLowerCase());
 }
 
-// Stage 2: script + lyrics.
-// TODO: call the Claude API with the channel's script prompt (hook in 5s,
-// 3-4 beats, chorus that carries the key idea, recap) and parse a VideoSpec.
+// Stage 2: script + lyrics, written by Claude Code (`claude -p`, subscription).
 async function writeScript(title: string, topic?: BacklogTopic): Promise<VideoSpec> {
-  const chorus = topic?.chorusIdea ?? `${title.replace(/\?$/, "")}, here we go!`;
-  return {
-    slug: topic?.slug ?? slugify(title),
-    title,
-    bpm: 120,
-    scenes: [
-      { kind: "hook", text: topic?.angle ?? title, durationBeats: 8 },
-      { kind: "beat", text: "Idea one", caption: "TODO: written by Claude", durationBeats: 8 },
-      { kind: "beat", text: "Idea two", caption: "TODO: written by Claude", durationBeats: 8 },
-      { kind: "chorus", text: chorus, durationBeats: 8 },
-      { kind: "beat", text: "Idea three", caption: "TODO: written by Claude", durationBeats: 8 },
-      { kind: "chorus", text: chorus, durationBeats: 8 },
-      { kind: "recap", text: "Recap", caption: "TODO: written by Claude", durationBeats: 8 },
-    ],
-  };
-}
-
-// Stage 3: fact-check. TODO: second Claude pass with web search; write
-// specs/<slug>.sources.json and fail if any claim is marked fix/cut.
-async function factCheck(spec: VideoSpec): Promise<void> {
-  console.log(`  [stub] fact-check skipped for ${spec.slug}`);
-}
-
-// Stages 4-5: music + narration. TODO: ElevenLabs Music + TTS, save under
-// public/assets/<slug>/, set spec.songSrc, spec.bpm, spec.beatOffsetMs.
-async function addAudio(spec: VideoSpec): Promise<VideoSpec> {
-  console.log(`  [stub] music and voiceover skipped for ${spec.slug}`);
+  const brief = [
+    readFileSync(join(ROOT, "prompts/script.md"), "utf8"),
+    `Topic: ${title}`,
+    topic?.angle ? `Hook idea: ${topic.angle}` : "",
+    topic?.chorusIdea ? `Chorus idea: ${topic.chorusIdea}` : "",
+    `Use slug: ${topic?.slug ?? slugify(title)}`,
+  ].filter(Boolean).join("\n");
+  const spec = claudeJson<VideoSpec>(brief);
+  if (!spec.scenes?.length || !spec.bpm) throw new Error("Script stage returned an incomplete spec");
   return spec;
+}
+
+// Stage 3: fact-check with a second, independent `claude -p` run (web search).
+// Writes specs/<slug>.sources.json and stops if any claim needs a fix or cut.
+async function factCheck(spec: VideoSpec): Promise<void> {
+  const prompt = `${readFileSync(join(ROOT, "prompts/factcheck.md"), "utf8")}\n\n${JSON.stringify(spec)}`;
+  const result = claudeJson<{ claims: { claim: string; verdict: string }[] }>(prompt, {
+    allowedTools: ["WebSearch", "WebFetch"],
+  });
+  writeFileSync(join(ROOT, "specs", `${spec.slug}.sources.json`), JSON.stringify(result, null, 2) + "\n");
+  const bad = result.claims.filter((c) => c.verdict !== "ok");
+  if (bad.length) {
+    throw new Error(`Fact-check flagged ${bad.length} claim(s); see specs/${spec.slug}.sources.json`);
+  }
 }
 
 function render(specPath: string, slug: string) {
@@ -93,8 +89,8 @@ async function main() {
     spec = await writeScript(title, topic);
   }
 
-  await factCheck(spec);
-  spec = await addAudio(spec);
+  if (!args.includes("--skip-factcheck")) await factCheck(spec);
+  spec = await getAudioProvider().addAudio(spec);
   writeFileSync(join(ROOT, specPath), JSON.stringify(spec, null, 2) + "\n");
   console.log(`Spec saved to ${specPath}`);
 
