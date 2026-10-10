@@ -1,21 +1,44 @@
 # Pipeline
 
-Everything for one video lives under a slug, e.g. `how-does-the-internet-work`. The production pipeline is `scripts/pipeline.ts`: eight explicit stages, each with inputs, outputs, a status computed from files on disk, logs, retries and a clear error. Any stage can be re-run on its own; a plain run continues from wherever the video is.
+Everything for one video lives under a slug, e.g. `how-does-the-internet-work`. The production pipeline is `scripts/pipeline.ts`: eleven explicit stages, each with inputs, outputs, a status computed from files on disk, logs, retries and a clear error. Any stage can be re-run on its own; a plain run continues from wherever the video is.
 
 ```
-topics/backlog.json
-   │ 1. script     claude -p         -> specs/<slug>.json (storyboard v2, draft visuals)
-   │ 2. factcheck  claude -p + web   -> specs/<slug>.sources.json (revises flagged text, max 2 rounds)
-   │ 3. direct     claude -p         -> specs/<slug>.json (visual system, labels, camera, transitions per shot)
-   │    factcheck again, only for new on-screen text (diagram labels)
-   │ 4. assets     local             -> out/<slug>/assets.json (+ optional Blender clips in public/generated/<slug>/3d/)
-   │ 5. audio      say + composer    -> out/<slug>/audio/ (timelines, manifest) + public/generated/<slug>/mix-*.wav
-   │ 6. render     Remotion          -> out/<slug>/candidates/<id>/{main,short}.mp4 + props.json
-   │ 7. qa         ffmpeg (+ claude) -> out/<slug>/candidates/<id>/qa/ (report, frames, contact sheets)
-   │ 8. package    Remotion still    -> out/<slug>/candidates/<id>/package/ (thumbnail, metadata)
+topics/backlog.json                config/settings.json (durations, admin: Settings)
+   │ 1. research   claude -p + web   -> specs/<slug>.research.json   topic qualification, angle, sourced dossier, thesis
+   │ 2. outline    claude -p         -> specs/<slug>.outline.json    per format: beats, claims each beat rests on, planned lengths
+   │ 3. script     claude -p         -> specs/<slug>.json (landscape) + specs/<slug>.short.json (Short): independent scripts
+   │ 4. review     claude -p         -> specs/<slug>.review.json     per format: rubric scores, findings, pass/fail (1 bounded revision)
+   │ 5. factcheck  claude -p + web   -> specs/<slug>.sources.json    claim-level verdicts with sources (targeted revision, max 2 rounds)
+   │ 6. direct     claude -p         -> both storyboards (sees the outline and the research claims)
+   │ 7. assets     local             -> out/<slug>/assets.json (+ optional Blender clips)
+   │ 8. audio      say + composer    -> out/<slug>/audio/ + public/generated/<slug>/mix-*.wav; measured lengths vs. the duration range
+   │ 9. render     Remotion          -> out/<slug>/candidates/<id>/{main,short}.mp4 + props-main.json, props-short.json
+   │10. qa          ffmpeg (+ claude) -> out/<slug>/candidates/<id>/qa/ (includes the final length vs. the range)
+   │11. package    Remotion still    -> out/<slug>/candidates/<id>/package/ (thumbnail, metadata, sources)
    ▼
 [approval in the admin panel]        -> out/<slug>/state.json (approved candidate) + topics/backlog.json
 ```
+
+## Research-first editorial flow
+
+Research informs writing; the script is never written first and researched afterwards.
+
+1. **Research** (`prompts/research.md`). Qualifies the topic (curiosity, depth, evidence, misconceptions, demonstrations, musical potential, and how many non-padded minutes the angle supports), compares angles when the topic is broad, and builds the dossier: mechanism, thesis/mental model, prerequisites, atomic claims with sources (URL, title, passage, what it supports, kind, and whether the page was actually opened), misconceptions, examples/analogies, uncertainties and exclusions. A claim is `supported` only with a source that was opened; otherwise it is `qualified`, `insufficient` or `excluded`. A rejected topic, a thesis resting on an unsupported claim, or fewer than five usable claims stops the pipeline with an *editorial* error.
+2. **Outline** (`prompts/outline.md`), once per format, from the dossier and that format's duration: opening question, how understanding changes, beats with roles, claim ids and planned seconds, the key example, the complication, conclusion, and what is long-form only. If the angle cannot fill the configured minimum without padding the stage fails instead of inventing filler.
+3. **Script** (`prompts/script.md`), once per format. The landscape and the Short are written independently from the same dossier; the Short teaches one insight on its own. Output is checked for schema, per-shot word limits, claim ids that exist and are usable, and the estimated runtime against the configured range (one repair round with concrete word counts).
+4. **Editorial review** (`prompts/review.md`), once per format, separate from the fact-check. A rubric scores ten criteria 0–5 (accuracy, clarity, progression, specificity, examples, engagement, memorability, format fit, music, redundancy). The pipeline decides pass/fail: every criterion ≥ 3, accuracy and clarity ≥ 4, progression ≥ 3, average ≥ 3.8, and no blocking problem. A failing script is rewritten once with the findings (`REVIEW_MAX_REVISIONS`, default 1), then fails. Reviews are kept in `specs/<slug>.review.json` with their history.
+5. **Fact-check** verifies every spoken and on-screen item claim by claim with sources it opened; flagged text gets a targeted revision (only the changed shots come back, merged and validated). Verdicts are reused only while the research is unchanged.
+6. **Direction** sees the approved outline and the research claims each shot states. It does not edit narration, lyrics or ids.
+
+## Formats and durations
+
+Settings live in `config/settings.json` (admin panel: **Settings**, per format target / minimum / maximum in minutes and seconds, reset to defaults, plus the narration rate used for estimates and the target tolerance). Defaults: landscape 7:00 (5:00–10:00), Short 0:45 (0:30–1:00), 156 words per minute, ±15 %. They are defaults, not limits. Saves are validated on the client and the server (positive, finite, min ≤ target ≤ max); invalid input is rejected with the reason and never clamped. A missing, partial or malformed file falls back to the defaults and says so.
+
+A job resolves the settings once when it starts and records them in `out/<slug>/state.json` (`run`); the admin passes the snapshot in `PIPELINE_SETTINGS`, so changing settings mid-run only affects later jobs. The snapshot flows through: outline and script prompts and validation, the runtime estimate (`estimateRuntime` in `src/schema/timeline.mjs`: narration at the configured rate plus lead/tail, whole bars, sung chorus words and `minBars`), the editorial review, the audio stage (ffprobe of the final mix against the range; `measuredWpm` is recorded for calibrating the rate), render candidates (`durations`), and QA (ffprobe of the rendered file against the range). Narration is never sped up, trimmed or padded to fit: when measured audio is outside the range the pipeline does one targeted script revision for that cut (`--duration-rounds`, default 1) and re-runs only what that changes, then fails with a *duration* error that shows measured vs. allowed. `ALLOW_DURATION_MISMATCH=1` overrides, for old short videos.
+
+Cache keys: research depends on the topic and the research prompt only; an outline on the research and that format's duration key; a script on its outline, the duration key and the script prompt; a review on the script text and outline; audio and render on each cut's own storyboard and duration key. Changing the Short's duration therefore leaves research and the landscape untouched.
+
+Videos made before the split keep their single storyboard (`specs/<slug>.json`), which serves both cuts (the Short uses shots marked `short`); they show as "stale" for script/outline/review until re-planned with a fresh script. Nothing is deleted: storyboards, sources, reviews and outlines are archived before every rewrite.
 
 ## Commands
 
@@ -32,7 +55,7 @@ npm run pipeline -- <slug> --stage qa --visual-review     # QA plus Claude inspe
 npm run generate -- "Topic" [--render] [--skip-factcheck] # old command, now a wrapper around the pipeline
 ```
 
-Other flags: `--formats main,short`, `--force`, `--allow-missing-assets`, `--fix-rounds N` (automatic QA fix rounds in continue mode, default 1, `0` disables).
+Other flags: `--formats main,short`, `--force`, `--allow-missing-assets`, `--fix-rounds N` (automatic QA fix rounds in continue mode, default 1, `0` disables), `--duration-rounds N` (script revisions after a duration failure, default 1). Env: `CLAUDE_MODEL`, `CLAUDE_EFFORT` (e.g. `low`) for the model calls; `DATA_ROOT` points specs/config/out at another directory (tests).
 
 ## What "continue" does
 
@@ -40,11 +63,14 @@ Other flags: `--formats main,short`, `--force`, `--allow-missing-assets`, `--fix
 
 | Stage | Up to date when |
 |---|---|
-| script | `specs/<slug>.json` is a v2 storyboard (v1 specs are migrated to a draft automatically) |
-| factcheck | every spoken and on-screen text item has an `ok` verdict in `sources.json` |
+| research | `specs/<slug>.research.json` exists for this topic and prompt version and has no blocking problem |
+| outline | each format's outline was made from the current research and duration settings |
+| script | each format has its own script made from its current outline, duration settings and prompt (older single storyboards show as stale; v1 specs are migrated to a draft) |
+| review | each format's script passed the editorial review for its current text |
+| factcheck | every spoken and on-screen text item of both scripts has an `ok` verdict for the current research |
 | direct | `direction.status` is `directed` |
 | assets | `assets.json` was made from the current visuals, asset manifest and Blender setting |
-| audio | the audio manifest's input hash matches the storyboard text, timing, music and voice settings |
+| audio | the audio manifest matches both scripts, music, voice and duration settings, and the measured lengths are inside the range (otherwise "failed") |
 | render | the newest candidate was made from the current storyboard, audio and renderer code |
 | qa | the newest candidate has a QA report that didn't fail |
 | package | the newest candidate has a thumbnail and metadata |

@@ -1,395 +1,687 @@
 {
   "claims": [
     {
-      "shot": "intro-ocean-cable",
-      "claim": "Right now, your cat video is zipping through a cable on the ocean floor, crossing an entire ocean in under a second.",
+      "shot": "hook-no-planned-route",
+      "claim": "Your video can cross an ocean in a few dozen milliseconds, and nobody plans its whole route. No wire is reserved for it. No master map guides it. So what really carries it from your phone to your friend's screen?",
       "verdict": "ok",
+      "note": "A one-way ocean crossing of about 30 ms is consistent with light in fiber at about 200,000 km/s over roughly 6,000 km. Real routes add router delay. No reserved circuit and per-datagram independence are confirmed by RFC 791. 'No master map' matches the ISOC statement that there is no global control at the operations level, although I did not open a source that addresses 'map' directly.",
       "sources": [
-        "https://www.submarinenetworks.com/en/systems/trans-atlantic/project-express/hibernia-express-connects-new-york-to-london-in-under-58-95ms"
-      ]
+        {
+          "url": "https://www.rfc-editor.org/rfc/rfc791.html",
+          "title": "RFC 791: Internet Protocol",
+          "passage": "The internet protocol treats each internet datagram as an independent entity unrelated to any other internet datagram. There are no connections or logical circuits (virtual or otherwise)."
+        },
+        {
+          "url": "https://resources.telegeography.com/the-speed-of-light-never-changes-except-when-it-does",
+          "title": "The Speed of Light Never Changes—Except When it Does",
+          "passage": "Light travels about 31% slower in fiber optic networks than in free space."
+        }
+      ],
+      "format": "main"
     },
     {
-      "shot": "intro-ocean-cable",
-      "claim": "Across an Ocean, Instantly",
-      "verdict": "ok",
-      "sources": [
-        "https://www.submarinenetworks.com/en/systems/trans-atlantic/project-express/hibernia-express-connects-new-york-to-london-in-under-58-95ms"
-      ]
-    },
-    {
-      "shot": "chopped-into-packets",
-      "claim": "Before it leaves your phone, that video gets chopped into thousands of tiny pieces called packets.",
-      "verdict": "ok",
-      "sources": [
-        "https://www.baeldung.com/cs/tcp-max-packet-size",
-        "https://medium.com/@af5667/packet-size-maximums-notes-ed0d7e5d5740"
-      ]
-    },
-    {
-      "shot": "chopped-into-packets",
-      "claim": "Chopped Into Packets",
-      "verdict": "ok",
-      "sources": [
-        "https://www.baeldung.com/cs/tcp-max-packet-size"
-      ]
-    },
-    {
-      "shot": "packet-address",
-      "claim": "Each packet carries its own address label, like a postcard, so it knows exactly where it's headed.",
-      "verdict": "ok",
-      "sources": [
-        "https://www.cs.princeton.edu/courses/archive/fall24/cos109/13protocol.pdf"
-      ]
-    },
-    {
-      "shot": "packet-address",
-      "claim": "Every Packet Has an Address",
-      "verdict": "ok",
-      "sources": [
-        "https://www.cs.princeton.edu/courses/archive/fall24/cos109/13protocol.pdf"
-      ]
-    },
-    {
-      "shot": "routers-hop",
-      "claim": "Machines called routers read that address and pass each packet to the next router, one hop at a time, like a relay race.",
-      "verdict": "ok",
-      "sources": [
-        "https://www.techtarget.com/searchnetworking/definition/packet",
-        "https://www.cs.princeton.edu/courses/archive/fall24/cos109/13protocol.pdf"
-      ]
-    },
-    {
-      "shot": "routers-hop",
-      "claim": "Routers Pass It Along",
-      "verdict": "ok",
-      "sources": [
-        "https://www.techtarget.com/searchnetworking/definition/packet"
-      ]
-    },
-    {
-      "shot": "chorus-hop-1",
-      "claim": "Packets on the move, hop hop hop!",
+      "shot": "hook-no-planned-route",
+      "claim": "Who plans the route?",
       "verdict": "ok",
       "note": "no factual claim",
-      "sources": []
+      "sources": [],
+      "format": "main"
     },
     {
-      "shot": "different-paths",
-      "claim": "Packets from the same video don't all take the same route — each hop picks whichever path looks fastest and least busy at that moment.",
+      "shot": "define-packet-ip",
+      "claim": "Four pieces first. A packet is a small chunk of data that travels with its own header. The header holds an IP address for where it came from and one for where it's going, like a return address and a destination.",
       "verdict": "ok",
       "sources": [
-        "https://en.wikibooks.org/wiki/A-level_Computing/AQA/Computer_Components,_The_Stored_Program_Concept_and_the_Internet/Structure_of_the_Internet/Packet_switching",
-        "https://www.sciencedirect.com/topics/computer-science/packet-switching-network"
-      ]
+        {
+          "url": "https://www.rfc-editor.org/rfc/rfc791.html",
+          "title": "RFC 791: Internet Protocol",
+          "passage": "The protocol uses fixed length addresses of four octets (32 bits) to identify sources and destinations. Internet modules use the addresses carried in the internet header to transmit datagrams toward their destinations."
+        }
+      ],
+      "format": "main"
     },
     {
-      "shot": "different-paths",
-      "claim": "Different Paths, Same Trip",
+      "shot": "define-packet-ip",
+      "claim": "Packet and IP address",
+      "verdict": "ok",
+      "note": "no factual claim (label)",
+      "sources": [],
+      "format": "main"
+    },
+    {
+      "shot": "define-router-table",
+      "claim": "Router and routing table",
+      "verdict": "ok",
+      "note": "no factual claim (label)",
+      "sources": [],
+      "format": "main"
+    },
+    {
+      "shot": "split-into-packets",
+      "claim": "Your phone's software slices the video into packets sized to fit the links ahead, so even a short clip can become thousands of pieces. Each one gets its own 'from' and 'to' address, like a postcard.",
+      "verdict": "ok",
+      "note": "Packet size is limited by the links, and IP can fragment a datagram that is too big. 'Thousands' is a reasonable figure for a clip of a few megabytes with packets of about 1,500 bytes.",
+      "sources": [
+        {
+          "url": "https://www.rfc-editor.org/rfc/rfc791.html",
+          "title": "RFC 791: Internet Protocol",
+          "passage": "The protocol breaks large datagrams into fragments for transmission through networks with smaller packet limits, and every datagram carries source and destination addresses in its header."
+        }
+      ],
+      "format": "main"
+    },
+    {
+      "shot": "split-into-packets",
+      "claim": "Sliced into postcards",
+      "verdict": "ok",
+      "note": "no factual claim (label)",
+      "sources": [],
+      "format": "main"
+    },
+    {
+      "shot": "split-no-reserved-line",
+      "claim": "No packet is tied to the others, and no circuit is reserved for your video the way a phone call holds a wire. IP treats every packet as a separate delivery, with nothing connecting one to the next.",
       "verdict": "ok",
       "sources": [
-        "https://en.wikibooks.org/wiki/A-level_Computing/AQA/Computer_Components,_The_Stored_Program_Concept_and_the_Internet/Structure_of_the_Internet/Packet_switching"
-      ]
+        {
+          "url": "https://www.rfc-editor.org/rfc/rfc791.html",
+          "title": "RFC 791: Internet Protocol",
+          "passage": "The internet protocol treats each internet datagram as an independent entity unrelated to any other internet datagram. There are no connections or logical circuits (virtual or otherwise)."
+        }
+      ],
+      "format": "main"
     },
     {
-      "shot": "undersea-light",
-      "claim": "Light Under the Sea",
+      "shot": "split-no-reserved-line",
+      "claim": "No reserved line",
       "verdict": "ok",
-      "note": "no numeric claim here, just describes the medium",
+      "note": "no factual claim (label); consistent with RFC 791",
+      "sources": [],
+      "format": "main"
+    },
+    {
+      "shot": "why-not-a-phone-line",
+      "claim": "Why build it this way? A phone network holds a wire for a whole call, even during silences. Computer traffic comes in bursts, and that fits a held wire badly.",
+      "verdict": "ok",
+      "note": "The ISOC history says circuit switching was inadequate for connecting time-shared computers. 'Bursty' is the standard explanation for why, though ISOC does not use that word.",
       "sources": [
-        "https://www.southampton.ac.uk/news/2013/04/speed-of-light-fibre-optic.page"
-      ]
+        {
+          "url": "https://www.internetsociety.org/internet/history-internet/brief-history-internet/",
+          "title": "A Brief History of the Internet",
+          "passage": "The circuit switched telephone system was totally inadequate for the job."
+        }
+      ],
+      "format": "main"
     },
     {
-      "shot": "bridge-out-of-order",
-      "claim": "Here's the catch: packets can arrive out of order, or a few might get lost along the way.",
+      "shot": "why-not-a-phone-line",
+      "claim": "Bursts versus held wires",
       "verdict": "ok",
+      "note": "no factual claim (label)",
+      "sources": [],
+      "format": "main"
+    },
+    {
+      "shot": "pioneers-arpanet",
+      "claim": "Packet switching, 1960s",
+      "verdict": "ok",
+      "note": "Matches the 1961-1967 dates in ISOC.",
       "sources": [
-        "https://wiki.wireshark.org/TCP_Analyze_Sequence_Numbers",
-        "https://www.destroyallsoftware.com/compendium/out-of-order-packets?share_key=637bf7e880afff8e"
-      ]
+        {
+          "url": "https://www.internetsociety.org/internet/history-internet/brief-history-internet/",
+          "title": "A Brief History of the Internet",
+          "passage": "Leonard Kleinrock at MIT published the first paper on packet switching theory in July 1961."
+        }
+      ],
+      "format": "main"
     },
     {
-      "shot": "bridge-out-of-order",
-      "claim": "Out of Order",
+      "shot": "hop-sorting-offices",
+      "claim": "Picture each router as a sorting office. It reads the address and knows one thing: which neighbor office to hand that address to. That neighbor knows the next one, and so on, until the postcard arrives.",
       "verdict": "ok",
+      "note": "A fair analogy. Forwarding is hop by hop on the destination address.",
       "sources": [
-        "https://wiki.wireshark.org/TCP_Analyze_Sequence_Numbers"
-      ]
+        {
+          "url": "https://www.rfc-editor.org/rfc/rfc791.html",
+          "title": "RFC 791: Internet Protocol",
+          "passage": "The datagrams are routed from one internet module to another through individual networks based on the interpretation of an internet address."
+        }
+      ],
+      "format": "main"
     },
     {
-      "shot": "reassembly",
-      "claim": "So every packet is numbered, and your phone uses those numbers to line them back up in order, asking again for any packet that never showed up.",
+      "shot": "hop-sorting-offices",
+      "claim": "One hop at a time",
       "verdict": "ok",
+      "note": "no factual claim (label)",
+      "sources": [],
+      "format": "main"
+    },
+    {
+      "shot": "hop-no-memory-network-of-networks",
+      "claim": "A network of networks",
+      "verdict": "ok",
+      "note": "no factual claim (label)",
+      "sources": [],
+      "format": "main"
+    },
+    {
+      "shot": "chorus-no-line-no-map",
+      "claim": "No line reserved, no master map, just one hop at a time.",
+      "verdict": "ok",
+      "note": "Song line, supported in substance by RFC 791 and ISOC (no connections, no global control).",
       "sources": [
-        "https://wiki.wireshark.org/TCP_Analyze_Sequence_Numbers"
-      ]
+        {
+          "url": "https://www.rfc-editor.org/rfc/rfc791.html",
+          "title": "RFC 791: Internet Protocol",
+          "passage": "There are no connections or logical circuits (virtual or otherwise)."
+        }
+      ],
+      "format": "main"
     },
     {
-      "shot": "reassembly",
-      "claim": "Numbered and Reassembled",
+      "shot": "traceroute-how",
+      "claim": "Run traceroute",
       "verdict": "ok",
+      "note": "no factual claim (instruction)",
+      "sources": [],
+      "format": "main"
+    },
+    {
+      "shot": "traceroute-sample",
+      "claim": "Illustrative output",
+      "verdict": "ok",
+      "note": "no factual claim (label)",
+      "sources": [],
+      "format": "main"
+    },
+    {
+      "shot": "myth-not-gps",
+      "claim": "You might picture routers acting like a GPS, hunting the fastest path for every packet. They don't.",
+      "verdict": "ok",
+      "note": "Routers choose by routing tables built from advertised reachability and policy, not by re-computing a fastest path for each packet. Some traffic-engineering systems do consider load, but that is not the default per-packet behavior.",
       "sources": [
-        "https://wiki.wireshark.org/TCP_Analyze_Sequence_Numbers"
-      ]
+        {
+          "url": "https://www.rfc-editor.org/rfc/rfc4271.html",
+          "title": "RFC 4271: BGP-4",
+          "passage": "Route selection involves the local BGP speaker's Decision Process applying its local policies to the routing information contained in its Adj-RIBs-In."
+        }
+      ],
+      "format": "main"
     },
     {
-      "shot": "outro-recap",
-      "claim": "Split into packets, addressed, hopped router to router, flashed through undersea cables, then reassembled in order — that's a video crossing the world. Next time you hit play, picture the hops.",
+      "shot": "myth-not-gps",
+      "claim": "Not a GPS",
       "verdict": "ok",
-      "note": "summarizes claims already verified above",
+      "note": "no factual claim (label)",
+      "sources": [],
+      "format": "main"
+    },
+    {
+      "shot": "myth-how-tables-arise",
+      "claim": "Each router tells its neighbors which destinations it can reach, and builds its table from what they say. So packets to one destination usually keep following the same path.",
+      "verdict": "ok",
+      "note": "This describes dynamic routing protocols. Routers can also have static routes. 'Usually' is an appropriate hedge.",
       "sources": [
-        "https://www.submarinenetworks.com/en/systems/trans-atlantic/project-express/hibernia-express-connects-new-york-to-london-in-under-58-95ms",
-        "https://en.wikibooks.org/wiki/A-level_Computing/AQA/Computer_Components,_The_Stored_Program_Concept_and_the_Internet/Structure_of_the_Internet/Packet_switching"
-      ]
+        {
+          "url": "https://www.rfc-editor.org/rfc/rfc4271.html",
+          "title": "RFC 4271: BGP-4",
+          "passage": "The primary function of a BGP speaking system is to exchange network reachability information with other BGP systems."
+        }
+      ],
+      "format": "main"
     },
     {
-      "shot": "outro-recap",
-      "claim": "Recap: The Journey",
+      "shot": "myth-how-tables-arise",
+      "claim": "Tables built from neighbors",
       "verdict": "ok",
-      "note": "no factual claim",
-      "sources": []
+      "note": "no factual claim (label); consistent with RFC 4271",
+      "sources": [],
+      "format": "main"
     },
     {
-      "shot": "undersea-light",
-      "claim": "Between continents, those hops often travel as pulses of light, flashing down fiber optic cables laid across the seafloor at about two-thirds the speed of light.",
+      "shot": "myth-link-fails-detour",
+      "claim": "Paths change when the network changes. Say a link in the chain breaks: neighbors stop advertising it, tables update, and packets to that destination take a detour.",
       "verdict": "ok",
+      "note": "Routes are withdrawn and replacements advertised when a route is no longer available. A detour exists only if an alternative path exists.",
       "sources": [
-        "https://news.ycombinator.com/item?id=12007573",
-        "https://www.earthdate.org/episodes/light-speed-under-the-sea",
-        "https://arxiv.org/pdf/1811.10737"
-      ]
+        {
+          "url": "https://www.rfc-editor.org/rfc/rfc4271.html",
+          "title": "RFC 4271: BGP-4",
+          "passage": "A previously advertised route can be advertised in the WITHDRAWN ROUTES field in the UPDATE message, marking the associated route as no longer available for use. A replacement route with the same NLRI can be advertised."
+        }
+      ],
+      "format": "main"
     },
     {
-      "shot": "intro-ocean-cable",
-      "claim": "Coast",
+      "shot": "myth-link-fails-detour",
+      "claim": "Routes change on change",
       "verdict": "ok",
-      "note": "no factual claim",
-      "sources": []
+      "note": "no factual claim (label)",
+      "sources": [],
+      "format": "main"
     },
     {
-      "shot": "intro-ocean-cable",
-      "claim": "Open Ocean",
+      "shot": "myth-other-causes",
+      "claim": "Not momentary congestion",
       "verdict": "ok",
-      "note": "no factual claim",
-      "sources": []
-    },
-    {
-      "shot": "intro-ocean-cable",
-      "claim": "Seafloor Cable",
-      "verdict": "ok",
+      "note": "Label; qualified by the same caveat as the previous item. Route selection follows advertised reachability and local policy rather than per-packet congestion measurement.",
       "sources": [
-        "https://en.wikipedia.org/wiki/Submarine_communications_cable"
-      ]
+        {
+          "url": "https://www.rfc-editor.org/rfc/rfc4271.html",
+          "title": "RFC 4271: BGP-4",
+          "passage": "Route selection involves the local BGP speaker's Decision Process applying its local policies to the routing information contained in its Adj-RIBs-In."
+        }
+      ],
+      "format": "main"
     },
     {
-      "shot": "intro-ocean-cable",
-      "claim": "Crossing time: <1 second",
+      "shot": "tcp-ip-promises-nothing",
+      "claim": "But IP promises nothing. Packets can arrive late, out of order, duplicated, or not at all. So a second protocol, TCP, sits on top to fix that. Cerf and Kahn designed TCP/IP so separately run networks could interconnect.",
       "verdict": "ok",
+      "note": "RFC 791 says IP provides no reliability. 'Promises nothing' is a vivid simplification: IP does promise best-effort delivery with a header checksum. RFC 793 says TCP must recover from data that is damaged, lost, duplicated or delivered out of order. ISOC says Kahn, joined by Cerf in 1973, designed the protocol for open-architecture networking.",
       "sources": [
-        "https://www.submarinenetworks.com/en/systems/trans-atlantic/project-express/hibernia-express-connects-new-york-to-london-in-under-58-95ms",
-        "https://en.wikipedia.org/wiki/Transatlantic_communications_cable"
-      ]
+        {
+          "url": "https://www.rfc-editor.org/rfc/rfc791.html",
+          "title": "RFC 791: Internet Protocol",
+          "passage": "The internet protocol does not provide a reliable communication facility. There are no acknowledgments either end-to-end or hop-by-hop. There are no retransmissions."
+        },
+        {
+          "url": "https://www.rfc-editor.org/rfc/rfc793.html",
+          "title": "RFC 793: Transmission Control Protocol",
+          "passage": "The TCP must recover from data that is damaged, lost, duplicated, or delivered out of order by the internet communication system."
+        },
+        {
+          "url": "https://www.internetsociety.org/internet/history-internet/brief-history-internet/",
+          "title": "A Brief History of the Internet",
+          "passage": "In the spring of 1973 Kahn asked Vint Cerf to work with him on the detailed design of the protocol."
+        }
+      ],
+      "format": "main"
     },
     {
-      "shot": "chopped-into-packets",
-      "claim": "Cat Video",
+      "shot": "tcp-ip-promises-nothing",
+      "claim": "IP, then TCP",
       "verdict": "ok",
-      "note": "no factual claim",
-      "sources": []
+      "note": "no factual claim (label)",
+      "sources": [],
+      "format": "main"
     },
     {
-      "shot": "packet-address",
-      "claim": "From: 192.0.2.10",
+      "shot": "tcp-sequence-numbers",
+      "claim": "TCP numbers the data it sends. Say six pieces go out and the receiver gets 1, 2, 4, 5 and 6. The numbers show that piece 3 is missing, and they let late arrivals slot into order and duplicates be spotted.",
       "verdict": "ok",
-      "note": "192.0.2.0/24 is a TEST-NET-1 documentation address reserved by IANA, correctly used as a non-routable example",
+      "note": "TCP numbers every byte (octet), not whole pieces. Numbering pieces is a fair simplification for a general audience.",
       "sources": [
-        "https://datatracker.ietf.org/doc/html/rfc5737"
-      ]
+        {
+          "url": "https://www.rfc-editor.org/rfc/rfc793.html",
+          "title": "RFC 793: Transmission Control Protocol",
+          "passage": "The sequence numbers are used to correctly order segments that may be received out of order and to eliminate duplicates."
+        }
+      ],
+      "format": "main"
     },
     {
-      "shot": "packet-address",
-      "claim": "To: 203.0.113.5",
+      "shot": "tcp-sequence-numbers",
+      "claim": "Numbers expose gaps",
       "verdict": "ok",
-      "note": "203.0.113.0/24 is TEST-NET-3, reserved for documentation use",
+      "note": "no factual claim (label)",
+      "sources": [],
+      "format": "main"
+    },
+    {
+      "shot": "tcp-ack-resend",
+      "claim": "The receiver sends back an acknowledgment for data it gets. Nothing confirms piece 3, so after a timeout the sender sends it again. Now all six fit, and the video is whole and in order.",
+      "verdict": "ok",
+      "note": "Real TCP also uses duplicate acknowledgments to trigger faster retransmission, but a timeout retransmit is the mechanism RFC 793 describes.",
       "sources": [
-        "https://datatracker.ietf.org/doc/html/rfc5737"
-      ]
+        {
+          "url": "https://www.rfc-editor.org/rfc/rfc793.html",
+          "title": "RFC 793: Transmission Control Protocol",
+          "passage": "This is achieved by assigning a sequence number to each octet transmitted, and requiring a positive acknowledgment (ACK) from the receiving TCP. If the ACK is not received within a timeout interval, the data is retransmitted."
+        }
+      ],
+      "format": "main"
     },
     {
-      "shot": "packet-address",
-      "claim": "Video data",
+      "shot": "fiber-middle-is-glass",
+      "claim": "The middle is glass",
       "verdict": "ok",
-      "note": "no factual claim",
-      "sources": []
-    },
-    {
-      "shot": "routers-hop",
-      "claim": "You",
-      "verdict": "ok",
-      "note": "no factual claim",
-      "sources": []
-    },
-    {
-      "shot": "routers-hop",
-      "claim": "Router",
-      "verdict": "ok",
+      "note": "A short label that fits the 'typically glass fiber' narration.",
       "sources": [
-        "https://en.wikipedia.org/wiki/Router_(computing)"
-      ]
+        {
+          "url": "https://resources.telegeography.com/the-speed-of-light-never-changes-except-when-it-does",
+          "title": "The Speed of Light Never Changes—Except When it Does",
+          "passage": "The speed of light is more like 124,188 miles per second when it's passing through those fiber optic cables under the sea."
+        }
+      ],
+      "format": "main"
     },
     {
-      "shot": "routers-hop",
-      "claim": "packet",
-      "verdict": "ok",
-      "sources": [
-        "https://en.wikipedia.org/wiki/Network_packet"
-      ]
-    },
-    {
-      "shot": "different-paths",
-      "claim": "Video",
-      "verdict": "ok",
-      "note": "no factual claim",
-      "sources": []
-    },
-    {
-      "shot": "different-paths",
-      "claim": "Route A",
-      "verdict": "ok",
-      "sources": [
-        "https://en.wikipedia.org/wiki/IP_routing"
-      ]
-    },
-    {
-      "shot": "different-paths",
-      "claim": "Route B",
-      "verdict": "ok",
-      "sources": [
-        "https://en.wikipedia.org/wiki/IP_routing"
-      ]
-    },
-    {
-      "shot": "different-paths",
-      "claim": "Destination",
-      "verdict": "ok",
-      "note": "no factual claim",
-      "sources": []
-    },
-    {
-      "shot": "different-paths",
-      "claim": "packet 1",
-      "verdict": "ok",
-      "note": "no factual claim",
-      "sources": []
-    },
-    {
-      "shot": "different-paths",
-      "claim": "packet 2",
-      "verdict": "ok",
-      "note": "no factual claim",
-      "sources": []
-    },
-    {
-      "shot": "undersea-light",
-      "claim": "Pulses of light",
-      "verdict": "ok",
-      "sources": [
-        "https://itp.nyu.edu/networks/explanations/fiber-optics-cables-for-information-exchange/"
-      ]
-    },
-    {
-      "shot": "undersea-light",
-      "claim": "~2/3 light speed",
-      "verdict": "ok",
-      "sources": [
-        "https://arxiv.org/pdf/1811.10737"
-      ]
-    },
-    {
-      "shot": "undersea-light",
-      "claim": "Across the seafloor",
-      "verdict": "ok",
-      "sources": [
-        "https://en.wikipedia.org/wiki/Submarine_communications_cable"
-      ]
-    },
-    {
-      "shot": "bridge-out-of-order",
-      "claim": "Your Phone",
-      "verdict": "ok",
-      "note": "no factual claim",
-      "sources": []
-    },
-    {
-      "shot": "bridge-out-of-order",
-      "claim": "3",
-      "verdict": "ok",
-      "note": "no factual claim",
-      "sources": []
-    },
-    {
-      "shot": "bridge-out-of-order",
-      "claim": "1",
-      "verdict": "ok",
-      "note": "no factual claim",
-      "sources": []
-    },
-    {
-      "shot": "bridge-out-of-order",
-      "claim": "2",
-      "verdict": "ok",
-      "note": "no factual claim",
-      "sources": []
-    },
-    {
-      "shot": "reassembly",
-      "claim": "Arriving Packets",
-      "verdict": "ok",
-      "note": "no factual claim",
-      "sources": []
-    },
-    {
-      "shot": "outro-recap",
-      "claim": "Split",
-      "verdict": "ok",
-      "sources": [
-        "https://en.wikipedia.org/wiki/Network_packet"
-      ]
-    },
-    {
-      "shot": "outro-recap",
-      "claim": "Addressed",
-      "verdict": "ok",
-      "sources": [
-        "https://en.wikipedia.org/wiki/IP_routing"
-      ]
-    },
-    {
-      "shot": "outro-recap",
-      "claim": "Hopped",
+      "shot": "fiber-undersea-cables",
+      "claim": "600+ undersea systems",
       "verdict": "ok",
       "sources": [
-        "https://en.wikipedia.org/wiki/Router_(computing)"
-      ]
+        {
+          "url": "https://resources.telegeography.com/how-many-submarine-cables-are-there-anyway",
+          "title": "How Many Submarine Cables Are There, Anyway?",
+          "passage": "607 in-service submarine cable systems as of 2026."
+        }
+      ],
+      "format": "main"
     },
     {
-      "shot": "outro-recap",
-      "claim": "Undersea Light",
+      "shot": "fiber-light-slowed",
+      "claim": "Two-thirds lightspeed",
       "verdict": "ok",
+      "note": "About 69% per TeleGeography, so 'two-thirds' is a fair rounding.",
       "sources": [
-        "https://en.wikipedia.org/wiki/Submarine_communications_cable"
-      ]
+        {
+          "url": "https://resources.telegeography.com/the-speed-of-light-never-changes-except-when-it-does",
+          "title": "The Speed of Light Never Changes—Except When it Does",
+          "passage": "Light travels about 31% slower in fiber optic networks than in free space."
+        }
+      ],
+      "format": "main"
     },
     {
-      "shot": "outro-recap",
-      "claim": "Reassembled",
+      "shot": "resolution-full-answer",
+      "claim": "So when you hit send, thousands of addressed packets leave with no reserved line, passed hop by hop with no master map. TCP numbers and checks them, light carries them through glass, and they snap back into the same video.",
+      "verdict": "ok",
+      "note": "A summary of items verified above. 'Thousands' fits a typical clip. 'Checks' is supported by TCP's checksums and acknowledgments.",
+      "sources": [
+        {
+          "url": "https://www.rfc-editor.org/rfc/rfc793.html",
+          "title": "RFC 793: Transmission Control Protocol",
+          "passage": "Damage is handled by adding a checksum to each segment transmitted, checking it at the receiver, and discarding damaged segments."
+        }
+      ],
+      "format": "main"
+    },
+    {
+      "shot": "resolution-full-answer",
+      "claim": "The full journey",
+      "verdict": "ok",
+      "note": "no factual claim (label)",
+      "sources": [],
+      "format": "main"
+    },
+    {
+      "shot": "chorus-glass-and-light",
+      "claim": "Light through glass, under the sea. No line, no map, one hop at a time.",
+      "verdict": "ok",
+      "note": "Song line. Light through glass fiber undersea is confirmed by TeleGeography.",
+      "sources": [
+        {
+          "url": "https://resources.telegeography.com/the-speed-of-light-never-changes-except-when-it-does",
+          "title": "The Speed of Light Never Changes—Except When it Does",
+          "passage": "The speed of light is more like 124,188 miles per second when it's passing through those fiber optic cables under the sea."
+        }
+      ],
+      "format": "main"
+    },
+    {
+      "shot": "define-router-table",
+      "claim": "A router is a device that forwards packets. It uses the destination address to check its routing table: a local list saying, for this address, hand it to that neighbor. It is not a map of the whole internet.",
+      "verdict": "ok",
+      "note": "A routing table is a per-router list of next hops. Routers do not hold a global map. Exact route selection can use prefixes and policy, but the simplification is not misleading.",
+      "sources": [
+        {
+          "url": "https://www.rfc-editor.org/rfc/rfc791.html",
+          "title": "RFC 791: Internet Protocol",
+          "passage": "The datagrams are routed from one internet module to another through individual networks based on the interpretation of an internet address."
+        },
+        {
+          "url": "https://www.internetsociety.org/internet/history-internet/brief-history-internet/",
+          "title": "A Brief History of the Internet",
+          "passage": "There would be no global control at the operations level."
+        }
+      ],
+      "format": "main"
+    },
+    {
+      "shot": "pioneers-arpanet",
+      "claim": "So in the 1960s, Baran, Davies and Kleinrock each worked out packet switching independently. The ARPANET, which went live in 1969, was the pioneering packet network whose design grew into today's internet.",
+      "verdict": "ok",
+      "note": "Source says the MIT, RAND and NPL work proceeded in parallel without the researchers knowing of each other's work. First IMP installed at UCLA in September 1969.",
+      "sources": [
+        {
+          "url": "https://www.internetsociety.org/internet/history-internet/brief-history-internet/",
+          "title": "A Brief History of the Internet",
+          "passage": "All this came together in September 1969 when BBN installed the first IMP at UCLA... the work at MIT (1961-1967), at RAND (1962-1965), and at NPL (1964-1967) had all proceeded in parallel without any of the researchers knowing about the other work."
+        }
+      ],
+      "format": "main"
+    },
+    {
+      "shot": "traceroute-how",
+      "claim": "You can watch this yourself. The traceroute command sends test packets with a growing hop limit, so each router along the way can report back in turn. The result is a list of the routers that answered, one line per hop.",
+      "verdict": "ok",
+      "note": "Matches the TTL and ICMP time-exceeded mechanism. 'The routers that answered' correctly allows for non-responding hops.",
+      "sources": [
+        {
+          "url": "https://www.rfc-editor.org/rfc/rfc1393.html",
+          "title": "RFC 1393: Traceroute Using an IP Option",
+          "passage": "sending out a packet with a Time To Live (TTL) of 1. The first hop then sends back an ICMP error message indicating that the packet could not be forwarded because the TTL expired... resent with a TTL of 2... This process continues until the destination is reached."
+        },
+        {
+          "url": "https://www.rfc-editor.org/rfc/rfc791.html",
+          "title": "RFC 791: Internet Protocol",
+          "passage": "If this field contains the value zero, then the datagram must be destroyed."
+        }
+      ],
+      "format": "main"
+    },
+    {
+      "shot": "tcp-ack-resend",
+      "claim": "Resend what's missing",
       "verdict": "ok",
       "sources": [
-        "https://en.wikipedia.org/wiki/Transmission_Control_Protocol"
-      ]
+        {
+          "url": "https://www.rfc-editor.org/rfc/rfc793.html",
+          "title": "RFC 793: Transmission Control Protocol",
+          "passage": "If the ACK is not received within a timeout interval, the data is retransmitted."
+        }
+      ],
+      "format": "main"
+    },
+    {
+      "shot": "tcp-scope",
+      "claim": "That is how TCP gets the pieces back whole and in order.",
+      "verdict": "ok",
+      "note": "TCP provides reliable, ordered delivery using sequence numbers, ACKs, retransmission and checksums. It does not do so for all internet traffic, such as UDP, but the sentence is about TCP.",
+      "sources": [
+        {
+          "url": "https://www.rfc-editor.org/rfc/rfc793.html",
+          "title": "RFC 793: Transmission Control Protocol",
+          "passage": "The TCP must recover from data that is damaged, lost, duplicated, or delivered out of order by the internet communication system."
+        }
+      ],
+      "format": "main"
+    },
+    {
+      "shot": "tcp-scope",
+      "claim": "Whole and in order",
+      "verdict": "ok",
+      "sources": [
+        {
+          "url": "https://www.rfc-editor.org/rfc/rfc793.html",
+          "title": "RFC 793: Transmission Control Protocol",
+          "passage": "The TCP must recover from data that is damaged, lost, duplicated, or delivered out of order by the internet communication system."
+        }
+      ],
+      "format": "main"
+    },
+    {
+      "shot": "fiber-middle-is-glass",
+      "claim": "Now the physical part. Wi-Fi or cellular is usually just the first or last stretch. Long-distance links, including the cables that cross oceans, typically carry your data as pulses of light through glass fiber.",
+      "verdict": "ok",
+      "note": "The glass-fiber part is supported by the TeleGeography and ICPC pages, which treat undersea cables as fiber. I did not find an authoritative source I opened for 'Wi-Fi or cellular is usually just the first or last stretch'. It is a general framing and is hedged with 'usually'.",
+      "sources": [
+        {
+          "url": "https://resources.telegeography.com/the-speed-of-light-never-changes-except-when-it-does",
+          "title": "The Speed of Light Never Changes—Except When it Does",
+          "passage": "the speed of light is more like 124,188 miles per second when it's passing through those fiber optic cables"
+        },
+        {
+          "url": "https://www.iscpc.org/news/media-enquiries/",
+          "title": "ICPC Media Enquiries & FAQ",
+          "passage": "Submarine telecommunications cables form the backbone of international digital connectivity and carry the vast majority of international data traffic."
+        }
+      ],
+      "format": "main"
+    },
+    {
+      "shot": "fiber-undersea-cables",
+      "claim": "More than 600 submarine cable systems are in service, lying across ocean floors and linking continents. They carry the vast majority of international data traffic.",
+      "verdict": "ok",
+      "note": "TeleGeography gives 607 in-service systems as of 2026. The ICPC wording matches 'vast majority'. The ICPC cites about 500 systems, which is an older or different count, but TeleGeography's figure supports 'more than 600'.",
+      "sources": [
+        {
+          "url": "https://resources.telegeography.com/how-many-submarine-cables-are-there-anyway",
+          "title": "How Many Submarine Cables Are There, Anyway?",
+          "passage": "As of 2026, 607 in-service systems, with another 102 planned."
+        },
+        {
+          "url": "https://www.iscpc.org/news/media-enquiries/",
+          "title": "ICPC Media Enquiries & FAQ",
+          "passage": "Submarine telecommunications cables form the backbone of international digital connectivity and carry the vast majority of international data traffic."
+        }
+      ],
+      "format": "main"
+    },
+    {
+      "shot": "fiber-light-slowed",
+      "claim": "Glass slows light to about two-thirds of its vacuum speed, roughly 200,000 kilometers per second. So 6,000 kilometers of cable takes about 30 milliseconds one way. That is a physical floor on delay, and router hops add more on top.",
+      "verdict": "ok",
+      "note": "TeleGeography gives about 199,886 km/s, roughly 67-69% of vacuum speed, so 'about two-thirds' and 'roughly 200,000' are fine. 6,000 km / 200,000 km/s = 30 ms. It is a floor for that cable length; real cable routes are longer than straight-line distance, but the item says 'of cable'.",
+      "sources": [
+        {
+          "url": "https://resources.telegeography.com/the-speed-of-light-never-changes-except-when-it-does",
+          "title": "The Speed of Light Never Changes—Except When it Does",
+          "passage": "light travels about 31% slower in fiber optic networks than in free space... 124,188 miles per second (about 199,886 km/s)."
+        }
+      ],
+      "format": "main"
+    },
+    {
+      "shot": "hop-no-memory-network-of-networks",
+      "claim": "No office plans the whole route, and by design none keeps a record of each postcard's flow once it's passed on. This works because the internet is a huge number of separately run networks, like ISPs and universities, that interconnect and carry each other's traffic.",
+      "verdict": "fix",
+      "correction": "No office plans the whole route, and in the original design none keeps a record of each postcard's flow once it's passed on. This works because the internet is a huge number of separately run networks, like ISPs and universities, that interconnect and pass each other's traffic along.",
+      "note": "The Internet Society history says the original design kept gateways free of per-flow information, and that there is no global control at the operations level. 'By design' is too absolute for today's routers: they keep routing tables, and some routers record flow statistics. 'Carry each other's traffic' is a reasonable gloss on interconnection, but the sources say the networks connect and stand on their own. They do not literally say the networks agree to carry each other's traffic.",
+      "sources": [
+        {
+          "url": "https://www.internetsociety.org/internet/history-internet/brief-history-internet/",
+          "title": "A Brief History of the Internet",
+          "passage": "There would be no information retained by the gateways about the individual flows of packets passing through them, thereby keeping them simple... There would be no global control at the operations level... Each distinct network would have to stand on its own and no internal changes could be required to any such network to connect it to the Internet."
+        },
+        {
+          "url": "https://www.rfc-editor.org/rfc/rfc1958.html",
+          "title": "RFC 1958: Architectural Principles of the Internet",
+          "passage": "Nobody owns the Internet, there is no centralized control, and nobody can turn it off. An end-to-end protocol design should not rely on the maintenance of state inside the network."
+        },
+        {
+          "url": "https://www.rfc-editor.org/rfc/rfc791.html",
+          "title": "RFC 791: Internet Protocol",
+          "passage": "The datagrams are routed from one internet module to another through individual networks based on the interpretation of an internet address."
+        }
+      ],
+      "format": "main"
+    },
+    {
+      "shot": "traceroute-sample",
+      "claim": "Here is an illustrative output, not a real measurement. Maybe a dozen lines, each a router that answered, with times generally creeping upward. Real lists can cross several cities or countries. Many hand-offs reflect a path built from many local forwarding decisions.",
+      "verdict": "fix",
+      "correction": "Here is an illustrative output, not a real measurement. Maybe a dozen lines, each a router that answered (some real hops just show stars), with times generally creeping upward. Real lists can cross several cities or countries. Many hand-offs reflect a path built from many local forwarding decisions.",
+      "note": "Traceroute lists the routers that return an ICMP Time Exceeded message. Routers that don't reply show up as asterisks. Times usually rise with distance but are not strictly monotonic, and the item's 'generally' already covers that. The 'several cities or countries' and 'many local forwarding decisions' parts are consistent with RFC 791's hop-by-hop routing. I did not find a source for the 'cities or countries' part and treat it as common knowledge.",
+      "sources": [
+        {
+          "url": "https://en.wikipedia.org/wiki/Traceroute",
+          "title": "Traceroute",
+          "passage": "Routers decrement TTL and return ICMP Time Exceeded when it reaches zero. When intermediate routers fail to reply within the timeout, an asterisk is displayed. The Internet Protocol does not require packets to take the same route towards a particular destination."
+        },
+        {
+          "url": "https://www.rfc-editor.org/rfc/rfc791.html",
+          "title": "RFC 791: Internet Protocol",
+          "passage": "The datagrams are routed from one internet module to another through individual networks based on the interpretation of an internet address."
+        }
+      ],
+      "format": "main"
+    },
+    {
+      "shot": "myth-other-causes",
+      "claim": "Routing updates, including policy changes, can also change paths, and some networks deliberately split traffic across equal links. Path changes are usually driven by failures or routing updates rather than by moment-to-moment congestion.",
+      "verdict": "fix",
+      "correction": "Routing updates, including policy changes, can also change paths, and some networks deliberately split traffic across equal links. In ordinary destination-based routing, paths mostly change when something changes, such as a failure or a routing update, not packet by packet with congestion.",
+      "note": "I could not open an authoritative source that states the 'usually driven by failures or routing updates' claim, which comes only from the dossier. The dossier's supporting source is a Brainly page, which is not authoritative. RFC 791 supports only that datagrams are routed independently by address. The load-balancing claim is also not covered by anything I opened. The softened wording is the safer version, but the claim is not fully verified. Traffic-engineering and congestion-aware routing do exist in some networks.",
+      "sources": [
+        {
+          "url": "https://www.rfc-editor.org/rfc/rfc791.html",
+          "title": "RFC 791: Internet Protocol",
+          "passage": "The datagrams are routed from one internet module to another through individual networks based on the interpretation of an internet address. The internet protocol treats each internet datagram as an independent entity."
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Traceroute",
+          "title": "Traceroute",
+          "passage": "The Internet Protocol does not require packets to take the same route towards a particular destination."
+        }
+      ],
+      "format": "main"
+    },
+    {
+      "shot": "chorus-number-and-resend",
+      "claim": "A number on each piece, resend what's missing. No dedicated line, no master map, one hop at a time.",
+      "verdict": "fix",
+      "correction": "A number on each piece, resend what's missing. No dedicated line, no central control, one hop at a time.",
+      "note": "Sequence numbers and retransmission are TCP features, not IP features. TCP numbers each octet, not each packet. A 'number on each piece' is an acceptable simplification for a general audience, though it does not name the layer. 'No dedicated line' is supported by RFC 791 ('no connections or logical circuits'). 'No master map' is a loose paraphrase: routers do hold routing tables, and the sources only say there is no global or centralized control. 'No central control' is what the sources state.",
+      "sources": [
+        {
+          "url": "https://www.rfc-editor.org/rfc/rfc793.html",
+          "title": "RFC 793: Transmission Control Protocol",
+          "passage": "Every octet of data sent over a TCP connection has a sequence number... If the ACK is not received within a timeout interval, the data is retransmitted."
+        },
+        {
+          "url": "https://www.rfc-editor.org/rfc/rfc791.html",
+          "title": "RFC 791: Internet Protocol",
+          "passage": "There are no connections or logical circuits (virtual or otherwise)."
+        },
+        {
+          "url": "https://www.internetsociety.org/internet/history-internet/brief-history-internet/",
+          "title": "A Brief History of the Internet",
+          "passage": "There would be no global control at the operations level."
+        }
+      ],
+      "format": "main"
+    },
+    {
+      "shot": "recap-one-hop-at-a-time",
+      "claim": "No dedicated line, no single master map, just one hop at a time, and a number on every piece so lost ones get resent. That design can help the internet keep working when parts of it break.",
+      "verdict": "fix",
+      "correction": "No dedicated line, no central control, just one hop at a time, and TCP numbers the data so lost pieces get resent. That design can help the internet keep working when parts of it break.",
+      "note": "'No single master map' is a loose paraphrase. The sources support 'no centralized or global control' and 'no per-flow state kept in gateways', not the absence of any map. The resilience claim is hedged with 'can help', which is acceptable. The Internet Society page states the design goal that gateways keep no flow information, 'thereby keeping them simple and avoiding complicated adaptation and recovery from various failure modes.' RFC 1958 says the loss of state must not cause more than a temporary denial of service. 'A number on every piece' is TCP behavior (per octet), not a property of every packet on the internet. UDP traffic, for example, carries no such numbers.",
+      "sources": [
+        {
+          "url": "https://www.internetsociety.org/internet/history-internet/brief-history-internet/",
+          "title": "A Brief History of the Internet",
+          "passage": "There would be no information retained by the gateways about the individual flows of packets passing through them, thereby keeping them simple and avoiding complicated adaptation and recovery from various failure modes."
+        },
+        {
+          "url": "https://www.rfc-editor.org/rfc/rfc793.html",
+          "title": "RFC 793: Transmission Control Protocol",
+          "passage": "The TCP must recover from data that is damaged, lost, duplicated, or delivered out of order by the internet communication system."
+        },
+        {
+          "url": "https://www.rfc-editor.org/rfc/rfc1958.html",
+          "title": "RFC 1958: Architectural Principles of the Internet",
+          "passage": "The loss of the state must not result in more than a temporary denial of service. Nobody owns the Internet, there is no centralized control."
+        }
+      ],
+      "format": "main"
     }
   ],
-  "checkedAt": "2026-10-10T14:20:57.715Z",
+  "checkedAt": "2026-10-10T22:53:27.246Z",
+  "researchHash": "92ef3a29598b410f",
   "history": [
     {
       "at": "2026-10-10T14:14:54.057Z",
@@ -405,6 +697,21 @@
       "at": "2026-10-10T14:20:57.719Z",
       "flagged": 0,
       "revised": false
+    },
+    {
+      "at": "2026-10-10T22:50:01.440Z",
+      "flagged": 14,
+      "revised": false
+    },
+    {
+      "at": "2026-10-10T22:52:35.464Z",
+      "flagged": 5,
+      "revised": true
+    },
+    {
+      "at": "2026-10-10T22:53:27.246Z",
+      "flagged": 5,
+      "revised": true
     }
   ]
 }

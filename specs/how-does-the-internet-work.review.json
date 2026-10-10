@@ -1,0 +1,347 @@
+{
+  "version": 1,
+  "formats": {
+    "main": {
+      "scores": {
+        "accuracy": 4,
+        "clarity": 4,
+        "progression": 4,
+        "specificity": 4,
+        "examples": 4,
+        "engagement": 4,
+        "memorability": 4,
+        "formatFit": 3,
+        "music": 3,
+        "redundancy": 4
+      },
+      "blocking": [],
+      "findings": [
+        {
+          "shot": "hook-no-planned-route",
+          "criterion": "engagement",
+          "severity": "minor",
+          "problem": "The hook says 'a few dozen milliseconds', but the script never ties this back to the video's actual arrival time. The later 30 ms figure covers only the cable. The hook also drops the outline's 'one smooth beam' misconception that the viewer is meant to unlearn.",
+          "fix": "Open with the viewer's likely picture, a single beam down a dedicated wire, and then undercut it. In the glass-fiber shot, say that propagation is only part of the total delay."
+        },
+        {
+          "criterion": "accuracy",
+          "severity": "minor",
+          "problem": "(fiber-light-speed) '6,000 km takes about 30 ms' is arithmetic (6,000 km ÷ 200,000 km/s = 30 ms), but the dossier gives no 6,000 km figure. The line 'physical floor on delay' is slightly overstated, since real cable routes are longer than the straight-line distance.",
+          "fix": "Say 'a 6,000 km span, roughly New York to Western Europe, adds about 30 ms at minimum.' Present it as an illustration, and say real routes are longer."
+        },
+        {
+          "shot": "fiber-undersea-cables",
+          "criterion": "accuracy",
+          "severity": "minor",
+          "problem": "'More than 600 systems in service' is supported. The claim that satellites handle 'only a small share' of traffic is covered only by the qualified 'vast majority' language, and this shot does not say the figure is approximate.",
+          "fix": "Keep 'the vast majority' and drop the 'satellites handle a small share' phrasing, or attribute it to cable industry bodies."
+        },
+        {
+          "shot": "myth-how-tables-arise",
+          "criterion": "clarity",
+          "severity": "minor",
+          "problem": "'Each router tells its neighbors which destinations it can reach' is introduced abruptly. The shot then jumps to 'packets keep following the same path', and the link between those two ideas is weak.",
+          "fix": "Add one line: 'so the table only changes when those announcements change.' Then say the path stays stable until then."
+        },
+        {
+          "shot": "myth-not-gps",
+          "criterion": "formatFit",
+          "severity": "minor",
+          "problem": "The GPS myth is split across four short shots, which fragments it. The script also runs about 6:22 against the 7:00 target, so there is room to be less cramped here.",
+          "fix": "Merge the shots into two. Use the spare time to give the traceroute section a concrete example, such as hop 1 being your home router."
+        },
+        {
+          "shot": "traceroute-sample",
+          "criterion": "specificity",
+          "severity": "minor",
+          "problem": "The traceroute is described as 'illustrative' with 'maybe a dozen lines'. It never shows what the viewer should notice, such as hostnames or a step in latency across an ocean.",
+          "fix": "Narrate a sample: hop 1 is your home router, hops 2-4 are your ISP, and latency jumps at the transatlantic hop."
+        },
+        {
+          "shot": "chorus-no-line-no-map",
+          "criterion": "music",
+          "severity": "minor",
+          "problem": "The chorus mostly repeats the narration and does not add a new mental model. Three choruses are variations of the same line.",
+          "fix": "Make the second and third choruses carry distinct content, such as a rhyme about numbering and resending, and keep 'no line, no map' short."
+        },
+        {
+          "shot": "tcp-ip-promises-nothing",
+          "criterion": "clarity",
+          "severity": "minor",
+          "problem": "The shot cramps in the TCP intro plus the Cerf and Kahn history. The history is not needed to follow the mechanism.",
+          "fix": "Move the Cerf and Kahn history to a one-line aside or cut it. Spend the time on why IP alone can lose packets."
+        }
+      ],
+      "summary": "The viewer learns that video is split into addressed packets, forwarded hop by hop with no reserved line and no master map, made reliable by TCP numbering and resends, and carried largely over glass fiber. The explanation is coherent and well supported by the dossier, and the TCP missing-piece-3 example is clear. The biggest weaknesses are a few small overreaches and gaps: the 6,000 km figure and the satellite-share claim, the thin traceroute walkthrough, and choruses that repeat rather than add.",
+      "format": "main",
+      "inputHash": "608f58571d525a8d",
+      "scriptHash": "b6cd83bb3fa80f94",
+      "outlineHash": "bec46f92e34cad22",
+      "at": "2026-10-10T18:33:45.337Z",
+      "verdict": {
+        "pass": true,
+        "average": 3.8,
+        "reasons": []
+      },
+      "estimate": {
+        "seconds": 382.2,
+        "spokenWords": 827,
+        "sungWords": 46,
+        "wordsPerMinute": 156,
+        "verdict": "ok",
+        "message": "6:22 (target 7:00, allowed 5:00-10:00)"
+      },
+      "history": [
+        {
+          "at": "2026-10-10T18:33:45.337Z",
+          "scores": {
+            "accuracy": 4,
+            "clarity": 4,
+            "progression": 4,
+            "specificity": 4,
+            "examples": 4,
+            "engagement": 4,
+            "memorability": 4,
+            "formatFit": 3,
+            "music": 3,
+            "redundancy": 4
+          },
+          "verdict": {
+            "pass": true,
+            "average": 3.8,
+            "reasons": []
+          },
+          "revised": false
+        }
+      ]
+    },
+    "short": {
+      "scores": {
+        "accuracy": 4,
+        "clarity": 3,
+        "progression": 4,
+        "specificity": 3,
+        "examples": 3,
+        "engagement": 4,
+        "memorability": 3,
+        "formatFit": 2,
+        "music": 3,
+        "redundancy": 4
+      },
+      "blocking": [
+        {
+          "shot": "resilience",
+          "problem": "The estimated runtime of 0:56 is about 24% over the 45s target (flagged at more than 15%). The explanation of rerouting, router table updates, and reordering is crammed into one 30-word shot."
+        },
+        {
+          "shot": "hop-by-hop",
+          "problem": "The postcard analogy is named but never mapped onto the mechanism. 'Postcards and sorting offices' is stated, then the sentence switches straight to routers and packets. The analogy fails to carry the teaching, and it risks implying a human sorter reads the data."
+        }
+      ],
+      "findings": [
+        {
+          "shot": "resilience",
+          "criterion": "clarity",
+          "severity": "major",
+          "problem": "'Routers update their lists' is the core answer to the hook ('even if a cable breaks') but is asserted with no explanation of how or why. It also contradicts the earlier claim that routers only 'check their short list.' Nothing says the lists are refreshed through exchanges with neighbours. 'The numbers put them back in order' is also unexplained: the viewer never learns that packets can arrive out of order or why.",
+          "fix": "Spend the words here. Say something like: 'When a link dies, neighbouring routers tell each other, fix their lists, and later packets go around the break. Packets may arrive scrambled, so the numbers let your device sort them.'"
+        },
+        {
+          "shot": "resilience",
+          "criterion": "accuracy",
+          "severity": "major",
+          "problem": "'Packets can detour' blurs the dossier's distinction. Rerouting happens on failure or a table update, not for ordinary traffic. Packets already in flight on the broken link may be lost, and TCP resends them. The script says nothing about loss, and the closing line 'No single path or map to break' suggests a stronger guarantee than the dossier supports.",
+          "fix": "Add 'anything lost gets resent' (tcp-ack-retransmit) and soften the ending to 'no single path to break'. Keep the claim tied to a change in the network, as the outline's complication says."
+        },
+        {
+          "shot": "hop-by-hop",
+          "criterion": "examples",
+          "severity": "major",
+          "problem": "The postcard analogy gets only a clause. It never says that each sorting office knows only the next office, and it never links postcards to packets. The shot is also 29 words with three ideas (analogy, lookup, no global knowledge).",
+          "fix": "Cut to one clean mapping: 'Like postcards: each sorting office reads the address and knows only the next office, never the whole route. Routers work the same way.'"
+        },
+        {
+          "shot": "chop-and-address",
+          "criterion": "clarity",
+          "severity": "minor",
+          "problem": "'Each packet is independent' is dropped in without consequence. The viewer is not told why independence matters, which is what makes the later detour possible. The final sentence reads as filler at this point.",
+          "fix": "Replace it with 'so each can travel on its own' to set up the rerouting payoff."
+        },
+        {
+          "shot": "hook-shatter",
+          "criterion": "formatFit",
+          "severity": "minor",
+          "problem": "The hook runs about 25 words, with 'It feels like one unbroken stream... It isn't.' taking up space before the question arrives.",
+          "fix": "Tighten to 'You hit send on a video. It's not one stream. So how does it arrive intact, even if a cable breaks?'"
+        },
+        {
+          "shot": "chorus-packets",
+          "criterion": "music",
+          "severity": "minor",
+          "problem": "The chorus names the steps but leaves out the payoff (reorder and detour), so it reinforces only the first half of the story. It also adds a sung shot that costs time in a Short that is already over length.",
+          "fix": "Use a line that includes the resilience, such as 'Chopped up, addressed, passed along, put back in order.' Alternatively, shorten the chorus to the minimum bars."
+        },
+        {
+          "shot": "chop-and-address",
+          "criterion": "specificity",
+          "severity": "minor",
+          "problem": "'Thousands of small packets' is given without qualification, although the dossier marks it as qualified. There is also no concrete picture of what a packet is or what a header looks like.",
+          "fix": "Say 'often thousands' and give one concrete detail, such as 'each stamped FROM, TO and #17'."
+        }
+      ],
+      "summary": "The viewer learns that a video is split into addressed, numbered packets that each hop through routers with no overall map. The biggest weakness is the compressed resolution: the hook asks about a broken cable, but the answer ('routers update their lists', 'numbers put them back in order') is asserted rather than explained. The runtime is also about 24% over target, and the postcard analogy is not carried through the mechanism.",
+      "format": "short",
+      "inputHash": "994815f82de724d8",
+      "scriptHash": "dedb9d85afa06416",
+      "outlineHash": "8c4dfcf0a35c5e4a",
+      "at": "2026-10-10T22:47:19.079Z",
+      "verdict": {
+        "pass": false,
+        "average": 3.3,
+        "reasons": [
+          "blocking: The estimated runtime of 0:56 is about 24% over the 45s target (flagged at more than 15%). The explanation of rerouting, router table updates, and reordering is crammed into one 30-word shot.",
+          "blocking: The postcard analogy is named but never mapped onto the mechanism. 'Postcards and sorting offices' is stated, then the sentence switches straight to routers and packets. The analogy fails to carry the teaching, and it risks implying a human sorter reads the data.",
+          "formatFit scored 2 (minimum 3)",
+          "clarity scored 3 (needs 4)",
+          "average 3.30 (needs 3.8)"
+        ]
+      },
+      "estimate": {
+        "seconds": 55.7,
+        "spokenWords": 113,
+        "sungWords": 7,
+        "wordsPerMinute": 156,
+        "verdict": "off-target",
+        "message": "0:56 is 24% from the 0:45 target (tolerance 15%)"
+      },
+      "history": [
+        {
+          "at": "2026-10-10T18:33:59.711Z",
+          "scores": {
+            "accuracy": 4,
+            "clarity": 4,
+            "progression": 4,
+            "specificity": 3,
+            "examples": 3,
+            "engagement": 3,
+            "memorability": 3,
+            "formatFit": 2,
+            "music": 3,
+            "redundancy": 3
+          },
+          "verdict": {
+            "pass": false,
+            "average": 3.2,
+            "reasons": [
+              "blocking: The script pads past the target and crams. It estimates 1:00 at 128 spoken words against a 94-105 target, which is about 33% over the 45s target. The outline budgeted 44s. The 'resilience' shot packs reroute, sequence numbers and reassembly into one beat, and that beat is likely near the 32-word limit. A viewer would struggle to follow the mechanism at this pace.",
+              "formatFit scored 2 (minimum 3)",
+              "average 3.20 (needs 3.8)"
+            ]
+          },
+          "revised": false
+        },
+        {
+          "at": "2026-10-10T18:35:03.350Z",
+          "scores": {
+            "accuracy": 4,
+            "clarity": 4,
+            "progression": 4,
+            "specificity": 3,
+            "examples": 3,
+            "engagement": 3,
+            "memorability": 3,
+            "formatFit": 2,
+            "music": 3,
+            "redundancy": 3
+          },
+          "verdict": {
+            "pass": false,
+            "average": 3.2,
+            "reasons": [
+              "blocking: The script pads past the target and crams. It estimates 1:00 at 128 spoken words against a 94-105 target, which is about 33% over the 45s target. The outline budgeted 44s. The 'resilience' shot packs reroute, sequence numbers and reassembly into one beat, and that beat is likely near the 32-word limit. A viewer would struggle to follow the mechanism at this pace.",
+              "formatFit scored 2 (minimum 3)",
+              "average 3.20 (needs 3.8)"
+            ]
+          },
+          "revised": false
+        },
+        {
+          "at": "2026-10-10T22:46:14.232Z",
+          "scores": {
+            "accuracy": 4,
+            "clarity": 4,
+            "progression": 4,
+            "specificity": 3,
+            "examples": 3,
+            "engagement": 3,
+            "memorability": 3,
+            "formatFit": 2,
+            "music": 3,
+            "redundancy": 3
+          },
+          "verdict": {
+            "pass": false,
+            "average": 3.2,
+            "reasons": [
+              "blocking: The script pads past the target and crams. It estimates 1:00 at 128 spoken words against a 94-105 target, which is about 33% over the 45s target. The outline budgeted 44s. The 'resilience' shot packs reroute, sequence numbers and reassembly into one beat, and that beat is likely near the 32-word limit. A viewer would struggle to follow the mechanism at this pace.",
+              "formatFit scored 2 (minimum 3)",
+              "average 3.20 (needs 3.8)"
+            ]
+          },
+          "revised": true
+        },
+        {
+          "at": "2026-10-10T22:46:56.731Z",
+          "scores": {
+            "accuracy": 4,
+            "clarity": 3,
+            "progression": 4,
+            "specificity": 3,
+            "examples": 3,
+            "engagement": 4,
+            "memorability": 3,
+            "formatFit": 3,
+            "music": 3,
+            "redundancy": 4
+          },
+          "verdict": {
+            "pass": false,
+            "average": 3.4,
+            "reasons": [
+              "clarity scored 3 (needs 4)",
+              "average 3.40 (needs 3.8)"
+            ]
+          },
+          "revised": true
+        },
+        {
+          "at": "2026-10-10T22:47:19.079Z",
+          "scores": {
+            "accuracy": 4,
+            "clarity": 3,
+            "progression": 4,
+            "specificity": 3,
+            "examples": 3,
+            "engagement": 4,
+            "memorability": 3,
+            "formatFit": 2,
+            "music": 3,
+            "redundancy": 4
+          },
+          "verdict": {
+            "pass": false,
+            "average": 3.3,
+            "reasons": [
+              "blocking: The estimated runtime of 0:56 is about 24% over the 45s target (flagged at more than 15%). The explanation of rerouting, router table updates, and reordering is crammed into one 30-word shot.",
+              "blocking: The postcard analogy is named but never mapped onto the mechanism. 'Postcards and sorting offices' is stated, then the sentence switches straight to routers and packets. The analogy fails to carry the teaching, and it risks implying a human sorter reads the data.",
+              "formatFit scored 2 (minimum 3)",
+              "clarity scored 3 (needs 4)",
+              "average 3.30 (needs 3.8)"
+            ]
+          },
+          "revised": false
+        }
+      ]
+    }
+  }
+}

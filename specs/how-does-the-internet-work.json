@@ -2,655 +2,505 @@
   "schemaVersion": 2,
   "slug": "how-does-the-internet-work",
   "title": "How Does the Internet Work?",
+  "format": "main",
   "brief": {
-    "audience": "curious kids and adults who use the internet daily but have never wondered what actually happens when they hit send",
-    "learningGoal": "After watching, the viewer can explain that the internet works by splitting data into addressed packets that hop router to router until they are reassembled at the destination.",
-    "hook": "Your cat video just crossed an ocean through a cable on the seafloor in under a second — how did it get there?"
+    "audience": "curious kids and adults who use the internet daily but have never wondered what happens when they hit send",
+    "learningGoal": "After watching, the viewer can explain that a video is split into separately addressed packets, forwarded one router hop at a time with no reserved line and no master map, checked and reordered by TCP, and carried mostly as light through glass fiber.",
+    "hook": "Your video can cross an ocean in a few dozen milliseconds, and nobody plans its whole route."
   },
   "world": "night",
   "direction": {
-    "status": "directed",
-    "at": "2026-10-10T14:26:15.829Z",
-    "by": "claude"
+    "status": "draft",
+    "at": "2026-10-10T18:32:29.861Z",
+    "by": "script"
   },
   "music": {
-    "bpm": 112,
-    "key": "G",
-    "mode": "major",
+    "bpm": 108,
+    "key": "A",
+    "mode": "minor",
     "mood": "driving"
   },
   "shots": [
     {
-      "id": "intro-ocean-cable",
+      "id": "hook-no-planned-route",
       "section": "intro",
-      "purpose": "hook with a surprising concrete image",
-      "narration": "Right now, your cat video is zipping through a cable on the ocean floor, crossing an entire ocean in under a second.",
-      "short": true,
-      "visual": {
-        "type": "journey",
-        "stops": [
-          {
-            "scene": "coast",
-            "label": "Coast"
-          },
-          {
-            "scene": "ocean",
-            "label": "Open Ocean"
-          },
-          {
-            "scene": "seafloor",
-            "label": "Seafloor Cable"
-          }
-        ],
-        "traveller": {
-          "icon": "video"
-        },
-        "stat": {
-          "label": "Crossing time",
-          "value": "<1 second"
-        }
-      },
-      "headline": "Across an Ocean, Instantly",
-      "camera": {
-        "move": "drift"
-      },
-      "accents": [
-        {
-          "beat": 0,
-          "sfx": "whoosh"
-        }
-      ],
-      "minBars": 2
-    },
-    {
-      "id": "chopped-into-packets",
-      "section": "verse",
-      "purpose": "introduce that data is split into packets",
-      "narration": "Before it leaves your phone, that video gets chopped into thousands of tiny pieces called packets.",
-      "short": true,
-      "visual": {
-        "type": "packetize",
-        "mode": "split",
-        "source": {
-          "icon": "video",
-          "label": "Cat Video"
-        },
-        "count": 8,
-        "packetLabel": "none"
-      },
-      "headline": "Chopped Into Packets",
-      "camera": {
-        "move": "push-in"
-      },
-      "accents": [
-        {
-          "beat": 0,
-          "sfx": "pop"
-        },
-        {
-          "beat": 2,
-          "sfx": "pop"
-        }
-      ]
-    },
-    {
-      "id": "packet-address",
-      "section": "verse",
-      "purpose": "each packet carries a destination address",
-      "narration": "Each packet carries its own address label, like a postcard, so it knows exactly where it's headed.",
-      "short": true,
-      "visual": {
-        "type": "anatomy",
-        "subject": "packet",
-        "label": "Packet",
-        "callouts": [
-          {
-            "label": "From: 192.0.2.10",
-            "anchor": "from-address"
-          },
-          {
-            "label": "To: 203.0.113.5",
-            "anchor": "to-address"
-          },
-          {
-            "label": "Video data",
-            "anchor": "payload"
-          }
-        ]
-      },
-      "headline": "Every Packet Has an Address",
-      "camera": {
-        "move": "static"
-      },
-      "accents": [
-        {
-          "beat": 0,
-          "sfx": "chime"
-        }
-      ]
-    },
-    {
-      "id": "routers-hop",
-      "section": "verse",
-      "purpose": "routers pass packets along hop by hop",
-      "narration": "Machines called routers read that address and pass each packet to the next router, one hop at a time, like a relay race.",
-      "short": true,
-      "visual": {
-        "type": "network",
-        "nodes": [
-          {
-            "id": "phone",
-            "icon": "phone",
-            "label": "You",
-            "x": 8,
-            "y": 50
-          },
-          {
-            "id": "r1",
-            "icon": "router",
-            "label": "Router",
-            "x": 30,
-            "y": 50
-          },
-          {
-            "id": "r2",
-            "icon": "router",
-            "label": "Router",
-            "x": 54,
-            "y": 50
-          },
-          {
-            "id": "r3",
-            "icon": "router",
-            "label": "Router",
-            "x": 78,
-            "y": 50
-          }
-        ],
-        "links": [
-          {
-            "from": "phone",
-            "to": "r1",
-            "style": "cable"
-          },
-          {
-            "from": "r1",
-            "to": "r2",
-            "style": "cable"
-          },
-          {
-            "from": "r2",
-            "to": "r3",
-            "style": "cable"
-          }
-        ],
-        "packets": [
-          {
-            "route": [
-              "phone",
-              "r1",
-              "r2",
-              "r3"
-            ],
-            "label": "packet",
-            "color": "primary",
-            "startBeat": 0,
-            "beatsPerHop": 2
-          }
-        ]
-      },
-      "headline": "Routers Pass It Along",
-      "camera": {
-        "move": "pan-right"
-      },
-      "accents": [
-        {
-          "beat": 0,
-          "sfx": "blip"
-        },
-        {
-          "beat": 6,
-          "sfx": "blip"
-        }
-      ],
-      "minBars": 2
-    },
-    {
-      "id": "chorus-hop-1",
-      "section": "chorus",
-      "purpose": "state the key idea in a singable line",
-      "lyric": "Packets on the move, hop hop hop!",
-      "short": true,
-      "visual": {
-        "type": "kinetic",
-        "style": "punch",
-        "emphasis": [
-          "hop",
-          "hop",
-          "hop"
-        ]
-      },
-      "camera": {
-        "move": "push-in"
-      },
-      "mascot": {
-        "mood": "happy",
-        "position": "right"
-      },
-      "accents": [
-        {
-          "beat": 0,
-          "sfx": "hit"
-        },
-        {
-          "beat": 2,
-          "sfx": "hit"
-        },
-        {
-          "beat": 3,
-          "sfx": "hit"
-        }
-      ]
-    },
-    {
-      "id": "different-paths",
-      "section": "verse",
-      "purpose": "packets can take different routes to the same place",
-      "narration": "Packets from the same video don't all take the same route — each hop picks whichever path looks fastest and least busy at that moment.",
-      "visual": {
-        "type": "network",
-        "nodes": [
-          {
-            "id": "src",
-            "icon": "phone",
-            "label": "Video",
-            "x": 10,
-            "y": 50
-          },
-          {
-            "id": "route-a-1",
-            "icon": "router",
-            "label": "Route A",
-            "x": 38,
-            "y": 25
-          },
-          {
-            "id": "route-b-1",
-            "icon": "router",
-            "label": "Route B",
-            "x": 38,
-            "y": 75
-          },
-          {
-            "id": "route-a-2",
-            "icon": "router",
-            "label": "Route A",
-            "x": 64,
-            "y": 25
-          },
-          {
-            "id": "route-b-2",
-            "icon": "router",
-            "label": "Route B",
-            "x": 64,
-            "y": 75
-          },
-          {
-            "id": "dst",
-            "icon": "server",
-            "label": "Destination",
-            "x": 90,
-            "y": 50
-          }
-        ],
-        "links": [
-          {
-            "from": "src",
-            "to": "route-a-1",
-            "style": "cable"
-          },
-          {
-            "from": "src",
-            "to": "route-b-1",
-            "style": "cable"
-          },
-          {
-            "from": "route-a-1",
-            "to": "route-a-2",
-            "style": "cable"
-          },
-          {
-            "from": "route-b-1",
-            "to": "route-b-2",
-            "style": "cable"
-          },
-          {
-            "from": "route-a-2",
-            "to": "dst",
-            "style": "cable"
-          },
-          {
-            "from": "route-b-2",
-            "to": "dst",
-            "style": "cable"
-          }
-        ],
-        "packets": [
-          {
-            "route": [
-              "src",
-              "route-a-1",
-              "route-a-2",
-              "dst"
-            ],
-            "label": "packet 1",
-            "color": "primary",
-            "startBeat": 0,
-            "beatsPerHop": 2
-          },
-          {
-            "route": [
-              "src",
-              "route-b-1",
-              "route-b-2",
-              "dst"
-            ],
-            "label": "packet 2",
-            "color": "secondary",
-            "startBeat": 0,
-            "beatsPerHop": 2
-          }
-        ]
-      },
-      "headline": "Different Paths, Same Trip",
-      "camera": {
-        "move": "pull-out"
-      },
-      "minBars": 2
-    },
-    {
-      "id": "undersea-light",
-      "section": "verse",
-      "purpose": "explain the physical medium: fiber optic cables",
-      "narration": "Between continents, those hops often travel as pulses of light, flashing down fiber optic cables laid across the seafloor at about two-thirds the speed of light.",
-      "visual": {
-        "type": "scene3d",
-        "scene": "fiber-packets",
-        "fallback": {
-          "type": "anatomy",
-          "subject": "cable",
-          "label": "Fiber Optic Cable",
-          "callouts": [
-            {
-              "label": "Pulses of light",
-              "x": 0.5,
-              "y": 0.25
-            },
-            {
-              "label": "~2/3 light speed",
-              "x": 0.5,
-              "y": 0.55
-            },
-            {
-              "label": "Across the seafloor",
-              "x": 0.5,
-              "y": 0.85
-            }
-          ]
-        }
-      },
-      "headline": "Light Under the Sea",
-      "accents": [
-        {
-          "beat": 0,
-          "sfx": "whoosh"
-        },
-        {
-          "beat": 12,
-          "sfx": "chime"
-        }
-      ],
-      "minBars": 5
-    },
-    {
-      "id": "chorus-hop-2",
-      "section": "chorus",
-      "purpose": "repeat the key idea",
-      "lyric": "Packets on the move, hop hop hop!",
+      "purpose": "hook-no-wire-for-video: Pose the puzzle: no reserved wire and no master map, yet the video arrives.",
+      "narration": "Your video can cross an ocean in a few dozen milliseconds, and nobody plans its whole route. No wire is reserved for it. No master map guides it. So what really carries it from your phone to your friend's screen?",
+      "headline": "Who plans the route?",
+      "claims": [],
       "visual": {
         "type": "kinetic",
         "style": "stack",
-        "emphasis": [
-          "hop"
+        "lines": [
+          "Who plans the route?"
         ]
-      },
-      "accents": [
-        {
-          "beat": 0,
-          "sfx": "hit"
-        }
-      ]
+      }
     },
     {
-      "id": "bridge-out-of-order",
-      "section": "bridge",
-      "purpose": "twist: packets can arrive out of order or go missing",
-      "narration": "Here's the catch: packets can arrive out of order, or a few might get lost along the way.",
-      "visual": {
-        "type": "network",
-        "nodes": [
-          {
-            "id": "r1",
-            "icon": "router",
-            "label": "Router",
-            "x": 12,
-            "y": 50
-          },
-          {
-            "id": "r2",
-            "icon": "router",
-            "label": "Router",
-            "x": 42,
-            "y": 25
-          },
-          {
-            "id": "r3",
-            "icon": "router",
-            "label": "Router",
-            "x": 42,
-            "y": 75
-          },
-          {
-            "id": "dst",
-            "icon": "phone",
-            "label": "Your Phone",
-            "x": 85,
-            "y": 50
-          }
-        ],
-        "links": [
-          {
-            "from": "r1",
-            "to": "r2",
-            "style": "cable"
-          },
-          {
-            "from": "r1",
-            "to": "r3",
-            "style": "cable"
-          },
-          {
-            "from": "r2",
-            "to": "dst",
-            "style": "cable"
-          },
-          {
-            "from": "r3",
-            "to": "dst",
-            "style": "cable"
-          }
-        ],
-        "packets": [
-          {
-            "route": [
-              "r1",
-              "r2",
-              "dst"
-            ],
-            "label": "3",
-            "color": "primary",
-            "startBeat": 0,
-            "beatsPerHop": 2
-          },
-          {
-            "route": [
-              "r1",
-              "r3",
-              "dst"
-            ],
-            "label": "1",
-            "color": "secondary",
-            "startBeat": 1,
-            "beatsPerHop": 2
-          },
-          {
-            "route": [
-              "r1",
-              "r2"
-            ],
-            "label": "2",
-            "color": "warm",
-            "startBeat": 3,
-            "beatsPerHop": 2
-          }
-        ],
-        "highlight": [
-          "r2"
-        ]
-      },
-      "headline": "Out of Order",
-      "camera": {
-        "move": "static"
-      },
-      "accents": [
-        {
-          "beat": 4,
-          "sfx": "riser"
-        }
-      ],
-      "minBars": 2
-    },
-    {
-      "id": "reassembly",
+      "id": "define-packet-ip",
       "section": "verse",
-      "purpose": "numbering allows reassembly and re-requesting lost packets",
-      "narration": "So every packet is numbered, and your phone uses those numbers to line them back up in order, asking again for any packet that never showed up.",
-      "visual": {
-        "type": "packetize",
-        "mode": "reassemble",
-        "source": {
-          "icon": "packet",
-          "label": "Arriving Packets"
-        },
-        "count": 5,
-        "packetLabel": "seq",
-        "destination": {
-          "icon": "phone",
-          "label": "Your Phone"
-        }
-      },
-      "headline": "Numbered and Reassembled",
-      "camera": {
-        "move": "push-in"
-      },
-      "accents": [
-        {
-          "beat": 0,
-          "sfx": "blip"
-        },
-        {
-          "beat": 4,
-          "sfx": "chime"
-        }
-      ]
-    },
-    {
-      "id": "chorus-hop-3",
-      "section": "chorus",
-      "purpose": "final repeat of the key idea",
-      "lyric": "Packets on the move, hop hop hop!",
+      "purpose": "define-the-pieces: Define packet and IP address.",
+      "narration": "Four pieces first. A packet is a small chunk of data that travels with its own header. The header holds an IP address for where it came from and one for where it's going, like a return address and a destination.",
+      "headline": "Packet and IP address",
+      "claims": [
+        "packet-header-addresses"
+      ],
       "visual": {
         "type": "kinetic",
-        "style": "punch",
-        "emphasis": [
-          "hop",
-          "hop",
-          "hop"
+        "style": "stack",
+        "lines": [
+          "Packet and IP address"
         ]
-      },
-      "camera": {
-        "move": "push-in"
-      },
-      "accents": [
-        {
-          "beat": 0,
-          "sfx": "riser"
-        },
-        {
-          "beat": 2,
-          "sfx": "hit"
-        },
-        {
-          "beat": 4,
-          "sfx": "chime"
-        }
-      ]
+      }
     },
     {
-      "id": "outro-recap",
-      "section": "outro",
-      "purpose": "recap the steps in order and send off",
-      "narration": "Split into packets, addressed, hopped router to router, flashed through undersea cables, then reassembled in order — that's a video crossing the world. Next time you hit play, picture the hops.",
+      "id": "define-router-table",
+      "section": "verse",
+      "purpose": "define-the-pieces: Define router and routing table as a local list, not a map.",
+      "narration": "A router is a device that forwards packets. It uses the destination address to check its routing table: a local list saying, for this address, hand it to that neighbor. It is not a map of the whole internet.",
+      "headline": "Router and routing table",
+      "claims": [
+        "packet-header-addresses",
+        "routers-forward-by-address"
+      ],
       "visual": {
-        "type": "steps",
-        "steps": [
-          {
-            "icon": "packet",
-            "label": "Split"
-          },
-          {
-            "icon": "packet",
-            "label": "Addressed"
-          },
-          {
-            "icon": "router",
-            "label": "Hopped"
-          },
-          {
-            "icon": "cable",
-            "label": "Undersea Light"
-          },
-          {
-            "icon": "check",
-            "label": "Reassembled"
-          }
+        "type": "kinetic",
+        "style": "stack",
+        "lines": [
+          "Router and routing table"
         ]
-      },
-      "headline": "Recap: The Journey",
-      "camera": {
-        "move": "pull-out"
-      },
-      "transition": "fade",
-      "mascot": {
-        "mood": "happy",
-        "position": "right"
-      },
-      "accents": [
-        {
-          "beat": 0,
-          "sfx": "chime"
-        }
-      ]
+      }
+    },
+    {
+      "id": "split-into-packets",
+      "section": "verse",
+      "purpose": "splitting-into-packets: Show the sender slicing the video into addressed packets.",
+      "narration": "Your phone's software slices the video into packets sized to fit the links ahead, so even a short clip can become thousands of pieces. Each one gets its own 'from' and 'to' address, like a postcard.",
+      "headline": "Sliced into postcards",
+      "claims": [
+        "host-splits-data",
+        "packet-header-addresses",
+        "packet-switching-basic"
+      ],
+      "visual": {
+        "type": "kinetic",
+        "style": "stack",
+        "lines": [
+          "Sliced into postcards"
+        ]
+      }
+    },
+    {
+      "id": "split-no-reserved-line",
+      "section": "verse",
+      "purpose": "splitting-into-packets: Establish independence and no reserved circuit.",
+      "narration": "No packet is tied to the others, and no circuit is reserved for your video the way a phone call holds a wire. IP treats every packet as a separate delivery, with nothing connecting one to the next.",
+      "headline": "No reserved line",
+      "claims": [
+        "datagram-independence",
+        "packet-switching-basic"
+      ],
+      "visual": {
+        "type": "kinetic",
+        "style": "stack",
+        "lines": [
+          "No reserved line"
+        ]
+      }
+    },
+    {
+      "id": "why-not-a-phone-line",
+      "section": "verse",
+      "purpose": "why-not-a-phone-line: Explain why circuits were a poor fit for computer traffic.",
+      "narration": "Why build it this way? A phone network holds a wire for a whole call, even during silences. Computer traffic comes in bursts, and that fits a held wire badly.",
+      "headline": "Bursts versus held wires",
+      "claims": [
+        "circuit-switching-rejected"
+      ],
+      "visual": {
+        "type": "kinetic",
+        "style": "stack",
+        "lines": [
+          "Bursts versus held wires"
+        ]
+      }
+    },
+    {
+      "id": "pioneers-arpanet",
+      "section": "verse",
+      "purpose": "why-not-a-phone-line: Credit the pioneers and the ARPANET.",
+      "narration": "So in the 1960s, Baran, Davies and Kleinrock each worked out packet switching independently. The ARPANET, which went live in 1969, was the pioneering packet network whose design grew into today's internet.",
+      "headline": "Packet switching, 1960s",
+      "claims": [
+        "packet-switching-pioneers",
+        "arpanet-origin"
+      ],
+      "visual": {
+        "type": "kinetic",
+        "style": "stack",
+        "lines": [
+          "Packet switching, 1960s"
+        ]
+      }
+    },
+    {
+      "id": "hop-sorting-offices",
+      "section": "verse",
+      "purpose": "hop-by-hop-forwarding: Show hop-by-hop forwarding with the sorting-office analogy.",
+      "narration": "Picture each router as a sorting office. It reads the address and knows one thing: which neighbor office to hand that address to. That neighbor knows the next one, and so on, until the postcard arrives.",
+      "headline": "One hop at a time",
+      "claims": [
+        "routers-forward-by-address",
+        "no-global-routing-map"
+      ],
+      "visual": {
+        "type": "kinetic",
+        "style": "stack",
+        "lines": [
+          "One hop at a time"
+        ]
+      }
+    },
+    {
+      "id": "hop-no-memory-network-of-networks",
+      "section": "verse",
+      "purpose": "hop-by-hop-forwarding: No map, no memory, and who runs the pieces.",
+      "narration": "No office plans the whole route, and by design none keeps a record of each postcard's flow once it's passed on. This works because the internet is a huge number of separately run networks, like ISPs and universities, that interconnect and carry each other's traffic.",
+      "headline": "A network of networks",
+      "claims": [
+        "no-global-routing-map",
+        "gateways-stateless",
+        "network-of-networks"
+      ],
+      "visual": {
+        "type": "kinetic",
+        "style": "stack",
+        "lines": [
+          "A network of networks"
+        ]
+      }
+    },
+    {
+      "id": "chorus-no-line-no-map",
+      "section": "chorus",
+      "purpose": "hop-by-hop-forwarding: Chorus stating the mechanism after it has been shown.",
+      "lyric": "No line reserved, no master map, just one hop at a time.",
+      "claims": [
+        "datagram-independence",
+        "no-global-routing-map"
+      ],
+      "visual": {
+        "type": "kinetic",
+        "style": "punch"
+      }
+    },
+    {
+      "id": "traceroute-how",
+      "section": "verse",
+      "purpose": "traceroute-worked-example: Explain how traceroute reveals the hops.",
+      "narration": "You can watch this yourself. The traceroute command sends test packets with a growing hop limit, so each router along the way can report back in turn. The result is a list of the routers that answered, one line per hop.",
+      "headline": "Run traceroute",
+      "claims": [
+        "routers-forward-by-address"
+      ],
+      "visual": {
+        "type": "kinetic",
+        "style": "stack",
+        "lines": [
+          "Run traceroute"
+        ]
+      }
+    },
+    {
+      "id": "traceroute-sample",
+      "section": "verse",
+      "purpose": "traceroute-worked-example: Teach what to notice in a traceroute output.",
+      "narration": "Here is an illustrative output, not a real measurement. Maybe a dozen lines, each a router that answered, with times generally creeping upward. Real lists can cross several cities or countries. Many hand-offs reflect a path built from many local forwarding decisions.",
+      "headline": "Illustrative output",
+      "claims": [
+        "routers-forward-by-address",
+        "no-global-routing-map"
+      ],
+      "visual": {
+        "type": "kinetic",
+        "style": "stack",
+        "lines": [
+          "Illustrative output"
+        ]
+      }
+    },
+    {
+      "id": "myth-not-gps",
+      "section": "bridge",
+      "purpose": "the-rerouting-myth: Correct the GPS misconception.",
+      "narration": "You might picture routers acting like a GPS, hunting the fastest path for every packet. They don't.",
+      "headline": "Not a GPS",
+      "claims": [
+        "packets-can-reroute-on-change"
+      ],
+      "visual": {
+        "type": "kinetic",
+        "style": "stack",
+        "lines": [
+          "Not a GPS"
+        ]
+      }
+    },
+    {
+      "id": "myth-how-tables-arise",
+      "section": "bridge",
+      "purpose": "the-rerouting-myth: Explain how tables arise without a global map.",
+      "narration": "Each router tells its neighbors which destinations it can reach, and builds its table from what they say. So packets to one destination usually keep following the same path.",
+      "headline": "Tables built from neighbors",
+      "claims": [
+        "packets-can-reroute-on-change",
+        "no-global-routing-map"
+      ],
+      "visual": {
+        "type": "kinetic",
+        "style": "stack",
+        "lines": [
+          "Tables built from neighbors"
+        ]
+      }
+    },
+    {
+      "id": "myth-link-fails-detour",
+      "section": "bridge",
+      "purpose": "the-rerouting-myth: Show a detour around a failed link.",
+      "narration": "Paths change when the network changes. Say a link in the chain breaks: neighbors stop advertising it, tables update, and packets to that destination take a detour.",
+      "headline": "Routes change on change",
+      "claims": [
+        "packets-can-reroute-on-change"
+      ],
+      "visual": {
+        "type": "kinetic",
+        "style": "stack",
+        "lines": [
+          "Routes change on change"
+        ]
+      }
+    },
+    {
+      "id": "myth-other-causes",
+      "section": "bridge",
+      "purpose": "the-rerouting-myth: Other causes of path change, and what is not one.",
+      "narration": "Routing updates, including policy changes, can also change paths, and some networks deliberately split traffic across equal links. Path changes are usually driven by failures or routing updates rather than by moment-to-moment congestion.",
+      "headline": "Not momentary congestion",
+      "claims": [
+        "packets-can-reroute-on-change"
+      ],
+      "visual": {
+        "type": "kinetic",
+        "style": "stack",
+        "lines": [
+          "Not momentary congestion"
+        ]
+      }
+    },
+    {
+      "id": "tcp-ip-promises-nothing",
+      "section": "verse",
+      "purpose": "tcp-makes-it-whole: Introduce TCP and its origin as the fix for unreliable delivery.",
+      "narration": "But IP promises nothing. Packets can arrive late, out of order, duplicated, or not at all. So a second protocol, TCP, sits on top to fix that. Cerf and Kahn designed TCP/IP so separately run networks could interconnect.",
+      "headline": "IP, then TCP",
+      "claims": [
+        "layering-ip-vs-tcp",
+        "tcp-handles-loss-duplication-reorder",
+        "tcpip-origin"
+      ],
+      "visual": {
+        "type": "kinetic",
+        "style": "stack",
+        "lines": [
+          "IP, then TCP"
+        ]
+      }
+    },
+    {
+      "id": "tcp-sequence-numbers",
+      "section": "verse",
+      "purpose": "tcp-makes-it-whole: Show sequence numbers with a concrete missing piece.",
+      "narration": "TCP numbers the data it sends. Say six pieces go out and the receiver gets 1, 2, 4, 5 and 6. The numbers show that piece 3 is missing, and they let late arrivals slot into order and duplicates be spotted.",
+      "headline": "Numbers expose gaps",
+      "claims": [
+        "tcp-sequence-numbers",
+        "tcp-handles-loss-duplication-reorder"
+      ],
+      "visual": {
+        "type": "kinetic",
+        "style": "stack",
+        "lines": [
+          "Numbers expose gaps"
+        ]
+      }
+    },
+    {
+      "id": "tcp-ack-resend",
+      "section": "verse",
+      "purpose": "tcp-makes-it-whole: Acknowledgment and retransmission, finishing the example.",
+      "narration": "The receiver sends back an acknowledgment for data it gets. Nothing confirms piece 3, so after a timeout the sender sends it again. Now all six fit, and the video is whole and in order.",
+      "headline": "Resend what's missing",
+      "claims": [
+        "tcp-ack-retransmit"
+      ],
+      "visual": {
+        "type": "kinetic",
+        "style": "stack",
+        "lines": [
+          "Resend what's missing"
+        ]
+      }
+    },
+    {
+      "id": "tcp-scope",
+      "section": "verse",
+      "purpose": "tcp-makes-it-whole: Scope TCP honestly to stored transfers.",
+      "narration": "That is how TCP gets the pieces back whole and in order.",
+      "claims": [],
+      "visual": {
+        "type": "kinetic",
+        "style": "stack",
+        "lines": [
+          "Whole and in order"
+        ]
+      }
+    },
+    {
+      "id": "chorus-number-and-resend",
+      "section": "chorus",
+      "purpose": "tcp-makes-it-whole: Chorus adding the numbering and resend idea.",
+      "lyric": "A number on each piece, resend what's missing. No dedicated line, no master map, one hop at a time.",
+      "claims": [
+        "tcp-sequence-numbers",
+        "tcp-ack-retransmit",
+        "no-global-routing-map"
+      ],
+      "visual": {
+        "type": "kinetic",
+        "style": "punch"
+      }
+    },
+    {
+      "id": "fiber-middle-is-glass",
+      "section": "verse",
+      "purpose": "the-real-wires-are-glass: Show that the long middle is glass, not wireless.",
+      "narration": "Now the physical part. Wi-Fi or cellular is usually just the first or last stretch. Long-distance links, including the cables that cross oceans, typically carry your data as pulses of light through glass fiber.",
+      "headline": "The middle is glass",
+      "claims": [
+        "fiber-optic-medium"
+      ],
+      "visual": {
+        "type": "kinetic",
+        "style": "stack",
+        "lines": [
+          "The middle is glass"
+        ]
+      }
+    },
+    {
+      "id": "fiber-undersea-cables",
+      "section": "verse",
+      "purpose": "the-real-wires-are-glass: Scale of submarine cables.",
+      "narration": "More than 600 submarine cable systems are in service, lying across ocean floors and linking continents. They carry the vast majority of international data traffic.",
+      "headline": "600+ undersea systems",
+      "claims": [
+        "submarine-cable-count",
+        "submarine-cables-carry-most-traffic"
+      ],
+      "visual": {
+        "type": "kinetic",
+        "style": "stack",
+        "lines": [
+          "600+ undersea systems"
+        ]
+      }
+    },
+    {
+      "id": "fiber-light-slowed",
+      "section": "verse",
+      "purpose": "the-real-wires-are-glass: Light speed in glass and the payoff of the hook, tied to hops.",
+      "narration": "Glass slows light to about two-thirds of its vacuum speed, roughly 200,000 kilometers per second. So 6,000 kilometers of cable takes about 30 milliseconds one way. That is a physical floor on delay, and router hops add more on top.",
+      "headline": "Two-thirds lightspeed",
+      "claims": [
+        "fiber-light-speed"
+      ],
+      "visual": {
+        "type": "kinetic",
+        "style": "stack",
+        "lines": [
+          "Two-thirds lightspeed"
+        ]
+      }
+    },
+    {
+      "id": "resolution-full-answer",
+      "section": "bridge",
+      "purpose": "full-journey-resolution: Resolve the opening question.",
+      "narration": "So when you hit send, thousands of addressed packets leave with no reserved line, passed hop by hop with no master map. TCP numbers and checks them, light carries them through glass, and they snap back into the same video.",
+      "headline": "The full journey",
+      "claims": [
+        "packet-switching-basic",
+        "no-global-routing-map",
+        "tcp-ack-retransmit",
+        "fiber-optic-medium"
+      ],
+      "visual": {
+        "type": "kinetic",
+        "style": "stack",
+        "lines": [
+          "The full journey"
+        ]
+      }
+    },
+    {
+      "id": "recap-one-hop-at-a-time",
+      "section": "outro",
+      "purpose": "one-hop-at-a-time-recap: Memorable takeaway.",
+      "narration": "No dedicated line, no single master map, just one hop at a time, and a number on every piece so lost ones get resent. That design can help the internet keep working when parts of it break.",
+      "headline": "One hop at a time",
+      "claims": [
+        "datagram-independence",
+        "no-global-routing-map",
+        "tcp-sequence-numbers"
+      ],
+      "visual": {
+        "type": "kinetic",
+        "style": "stack",
+        "lines": [
+          "One hop at a time"
+        ]
+      }
+    },
+    {
+      "id": "chorus-glass-and-light",
+      "section": "chorus",
+      "purpose": "one-hop-at-a-time-recap: Closing chorus adding the physical layer.",
+      "lyric": "Light through glass, under the sea. No line, no map, one hop at a time.",
+      "claims": [
+        "fiber-optic-medium",
+        "datagram-independence",
+        "no-global-routing-map"
+      ],
+      "visual": {
+        "type": "kinetic",
+        "style": "punch"
+      }
     }
-  ]
+  ],
+  "editorial": {
+    "outlineHash": "bec46f92e34cad22",
+    "researchHash": "92ef3a29598b410f",
+    "durationKey": "main:420/300-600@156wpm±0.15",
+    "promptVersion": 2,
+    "estimate": {
+      "seconds": 382.2,
+      "spokenWords": 827,
+      "sungWords": 46,
+      "wordsPerMinute": 156,
+      "verdict": "ok",
+      "message": "6:22 (target 7:00, allowed 5:00-10:00)"
+    },
+    "at": "2026-10-10T18:32:29.868Z"
+  }
 }

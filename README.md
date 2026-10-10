@@ -9,7 +9,7 @@ The core idea: **Claude writes and directs; code renders.** Instead of asking an
 - **A real storyboard stage.** `specs/<slug>.json` is a validated, versioned storyboard (VideoSpec v2): per shot, the narration and lyric, a visual system with its own data (network diagram nodes and packet routes, anatomy callouts, journey stops...), camera move, transition, mascot, musical accents, and whether it belongs in the vertical Short. Old v1 specs are migrated automatically.
 - **Twelve scene systems** (`src/shots/`): title cards, kinetic typography, network diagrams with packets hopping along routes, a file cut into packets and reassembled, anatomy close-ups with callouts, parallax journeys, flows, quantity comparisons, two-column comparisons, timelines, numbered steps and a mascot character shot, plus `scene3d` for Blender clips with a 2D fallback. They share one art direction (`src/theme.ts`: four colour "worlds", Avenir Next, one easing language), safe areas and text fitting for 16:9 and 9:16 (`src/layout.ts`), and a code-drawn illustration library (`src/assets/icons.tsx`).
 - **Music and narration that drive the edit.** Narration (macOS `say`) is measured first; shots are cut to whole bars of the song; a built-in composer arranges music on that timeline by section; the chorus is sung (pitch-shifted speech) on the beat with the words landing on screen at the same frames; SFX mark transitions and selected accents; the mix is ducked and normalised to -14 LUFS. All local and free. ElevenLabs is an optional, off-by-default provider.
-- **A staged, recoverable pipeline** (`npm run pipeline`): script, fact-check (with web search and bounded revision, re-run only for new text, including diagram labels), direction, assets, audio, render, QA, packaging. Status is computed from files; stale work re-runs, fresh work is cached; locks, cancellation, archives and immutable render candidates keep good output safe.
+- **A staged, recoverable pipeline** (`npm run pipeline`): research (qualified topic, sourced dossier), per-format outline, independent landscape and Short scripts, an editorial review gate, fact-check (with web search and bounded revision, re-run only for new text, including diagram labels), direction, assets, audio, render, QA, packaging. Landscape and Short durations are configured in the admin panel (Settings) and enforced against measured audio and the rendered files. Status is computed from files; stale work re-runs, fresh work is cached; locks, cancellation, archives and immutable render candidates keep good output safe.
 - **Automated QA on the actual files**: streams, durations, loudness, silence, sampled frames (blank, frozen, repeated, touching the edge, missing assets), text fit, contact sheets, and an optional Claude review of the frames.
 - **An admin panel** (`npm run admin`) that runs all of it from the browser.
 
@@ -36,7 +36,9 @@ Start the panel with the same Node that installed `node_modules` (native arm64 o
 `npm run admin` serves a local-only panel (127.0.0.1, same-origin writes only, no extra dependencies). It shells out to the pipeline, one job at a time, and never re-implements pipeline rules in the browser.
 
 - **Videos** and **Backlog**: every topic with a status chip per stage (up to date, out of date, failed, not done) and its sound status; add, edit, reorder and re-status topics.
-- **Overview**: the eight stages with their real status and reason, the last successful checkpoint, errors with hints, and a Run button per stage; "Continue production" runs whatever is missing or stale; "Fresh script" archives and restarts.
+- **Settings**: target, minimum and maximum duration per format (minutes and seconds), narration rate and tolerance; validated, saved to `config/settings.json`, snapshotted per job.
+- **Research & review**: the dossier (claims, sources, which were opened), outlines, and editorial rubric scores and findings per format.
+- **Overview**: the eleven stages with their real status and reason, the last successful checkpoint, errors with hints, and a Run button per stage; "Continue production" runs whatever is missing or stale; "Fresh script" archives and restarts.
 - **Storyboard**: the shot list with thumbnails from the latest render, timing in bars, visual type, section and Short membership; edit any shot (or the raw JSON), validate, save (the previous version is archived); select shots to redirect with notes or to preview at half resolution.
 - **Fact-check**: every spoken and on-screen claim with verdict, correction and sources.
 - **Assets & audio**: providers, per-cut audio status (full, partial, silent), loudness, licences, players for the mix and the music; illustration and licence report; Blender availability and 3D clip status with a preview.
@@ -65,7 +67,7 @@ Start the panel with the same Node that installed `node_modules` (native arm64 o
 ```
 admin/                  Local admin panel (server.mjs + public/)
 docs/pipeline.md        Stages, files, flags, recovery
-prompts/                script, factcheck, revise, direct
+prompts/                research, outline, script, review, factcheck, revise, direct
 scripts/pipeline.ts     The pipeline CLI; stages in scripts/stages/
 scripts/audio/          Composer, SFX and WAV helpers
 scripts/providers/      Voice providers (say, elevenlabs, none)

@@ -29,6 +29,8 @@ function cleanEnv() {
 function runOnce(prompt: string, opts: ClaudeOptions): Promise<string> {
   const args = ["-p", "--output-format", "json"];
   if (opts.model ?? process.env.CLAUDE_MODEL) args.push("--model", (opts.model ?? process.env.CLAUDE_MODEL)!);
+  // CLAUDE_EFFORT (e.g. "low") lowers reasoning effort for every call in this run.
+  if (process.env.CLAUDE_EFFORT) args.push("--effort", process.env.CLAUDE_EFFORT);
   if (opts.allowedTools?.length) args.push("--allowedTools", opts.allowedTools.join(","));
   const timeoutMs = opts.timeoutMs ?? Number(process.env.CLAUDE_TIMEOUT_MS ?? 15 * 60 * 1000);
   return new Promise((resolve, reject) => {

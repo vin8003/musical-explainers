@@ -88,13 +88,19 @@ function dossierForPrompt(r: ResearchFile) {
   };
 }
 
+/** Typical per-shot overhead: narration lead + tail (0.8 s) plus rounding up to whole bars. Calibrated against measured timelines. */
+const SHOT_OVERHEAD_S = 1.8;
+const typicalShots = (format: Format, target: number) => (format === "short" ? Math.max(3, Math.round(target / 9)) : Math.max(8, Math.round(target / 16)));
+
 function durationBrief(settings: Settings, format: Format) {
   const d = settings.formats[format];
   const wpm = settings.narration.wordsPerMinute;
+  const shots = typicalShots(format, d.targetSeconds);
+  const words = Math.max(10, Math.round(((d.targetSeconds - shots * SHOT_OVERHEAD_S) * wpm) / 60));
   return [
     `## Format: ${FORMAT_LABEL[format]} (${ASPECT[format]})`,
     `Target duration: ${fmt(d.targetSeconds)} (${d.targetSeconds} s). Allowed range: ${fmt(d.minSeconds)}-${fmt(d.maxSeconds)}. Estimates more than ${Math.round(settings.narration.targetTolerance * 100)}% from the target are flagged.`,
-    `Narration delivery rate: ${wpm} words per minute, so the target is roughly ${Math.round((d.targetSeconds * wpm) / 60 * 0.8)}-${Math.round((d.targetSeconds * wpm) / 60 * 0.9)} spoken words once musical time is counted (a diagnostic, not a contract).`,
+    `Narration delivery rate: ${wpm} words per minute. Every shot also costs about ${SHOT_OVERHEAD_S} s of overhead (lead-in, tail and rounding up to whole bars), and a sung chorus shot takes at least 2 bars. So with about ${shots} shots, plan roughly ${words} spoken words in total (a diagnostic, not a contract: fewer, longer shots carry more words, many short shots carry fewer).`,
     `Per-shot narration limit: ${SHOT_WORD_LIMIT[format]} words.`,
   ].join("\n");
 }
@@ -184,7 +190,7 @@ type ScriptShot = Omit<Shot, "visual"> & { beat?: string };
 export type ScriptReply = Omit<VideoSpec, "schemaVersion" | "shots"> & { shots: ScriptShot[] };
 
 /** Structural, evidence and runtime checks on a script reply. Problems go back to Claude once. */
-export function checkScript(r: ScriptReply, format: Format, research: Research | null, settings: Settings): string[] {
+export function checkScript(r: ScriptReply, format: Format, research: Research | null, settings: Settings, strictDuration = false): string[] {
   const p: string[] = [];
   const min = format === "short" ? 3 : 8;
   if (!Array.isArray(r?.shots) || r.shots.length < min) return [`shots must list at least ${min} shots`];
@@ -210,7 +216,7 @@ export function checkScript(r: ScriptReply, format: Format, research: Research |
     }
   });
   if (!r.music?.bpm) p.push("music.bpm is required");
-  if (!p.length) {
+  if (!p.length && strictDuration) {
     const est = estimateRuntime(toSpec(r, "x", format), format, settings.narration.wordsPerMinute);
     const c = checkDuration(est.seconds, settings, format);
     if (c.verdict === "short" || c.verdict === "long") {
@@ -273,7 +279,20 @@ async function writeScript(ctx: RunCtx, format: Format, research: ResearchFile, 
     ...extra,
   ].filter(Boolean).join("\n");
   console.log(`  writing the ${FORMAT_LABEL[format]} script with claude -p`);
-  const reply = await claudeJson<ScriptReply>(brief, { label: `script ${format}`, check: (r) => checkScript(r, format, research, ctx.settings) });
+  let reply = await claudeJson<ScriptReply>(brief, { label: `script ${format}`, check: (r) => checkScript(r, format, research, ctx.settings) });
+  // Length is checked after the structural checks so the model gets one precise, numeric retry. If it still
+  // misses, the script is kept and the miss is surfaced (the editorial review judges format fit, and the
+  // measured audio is the final gate) instead of failing before anyone can look at it.
+  const miss = checkScript(reply, format, research, ctx.settings, true);
+  if (miss.length) {
+    console.log(`  ${FORMAT_LABEL[format]} length: ${miss[0]}`);
+    try {
+      reply = await claudeJson<ScriptReply>(`${brief}\n\n## Your previous attempt missed the length\n${miss[0]}\nPrevious attempt:\n${JSON.stringify(reply.shots.map((x) => ({ id: x.id, section: x.section, narration: x.narration, lyric: x.lyric, claims: x.claims })), null, 1)}\nRewrite it with the length fixed, changing as little else as possible.`, { label: `script ${format} (length)`, check: (r) => checkScript(r, format, research, ctx.settings, true) });
+    } catch (e) {
+      if (!(e instanceof PipelineError) || e.kind !== "invalid") throw e;
+      console.log(`  keeping the first ${FORMAT_LABEL[format]} script; its length miss will be flagged`);
+    }
+  }
   const spec = toSpec(reply, ctx.slug, format);
   const est = estimateRuntime(spec, format, ctx.settings.narration.wordsPerMinute);
   const check = checkDuration(est.seconds, ctx.settings, format);
@@ -364,7 +383,11 @@ export async function reviewStage(ctx: RunCtx): Promise<StageResult> {
     for (let round = 0; ; round++) {
       if (!reply) {
         console.log(`  editorial review of the ${FORMAT_LABEL[format]} (round ${round + 1})`);
-        reply = await claudeJson<ReviewReply>(reviewPrompt(spec, format, research, outline, ctx.settings), { label: `review ${format}`, check: (r) => validateReview(r, spec!.shots.map((s) => s.id)) });
+        reply = await claudeJson<ReviewReply>(reviewPrompt(spec, format, research, outline, ctx.settings), { label: `review ${format}`, check: (r) => validateReview(r) });
+        // A reviewer naming a shot that doesn't exist is a slip, not a reason to discard the review: keep the finding, drop the bad reference.
+        const known = new Set(spec.shots.map((s) => s.id));
+        const fix = <T extends { shot?: string; problem: string }>(x: T): T => (x.shot && !known.has(x.shot) ? { ...x, shot: undefined, problem: `(${x.shot}) ${x.problem}` } : x);
+        reply = { ...reply, blocking: reply.blocking.map(fix), findings: reply.findings.map(fix) };
       }
       const verdict = reviewVerdict(reply);
       history.push({ at: new Date().toISOString(), scores: reply.scores, verdict, revised: false });

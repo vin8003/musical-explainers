@@ -9,6 +9,7 @@
 //   weak-review-always   every landscape review scores low
 //   unsupported-thesis   the dossier's thesis rests on an "insufficient" claim
 //   fail-script-short    the Short script call fails (exit 1), to simulate an interruption
+//   overlong-short       the Short script is always far over its range (the length retry cannot fix it)
 //   research-v2          the dossier text differs (a research change)
 // FAKE_MUTATE_SETTINGS=<path> + FAKE_MUTATE_JSON: overwrite the settings file during the first outline call.
 import { appendFileSync, existsSync, writeFileSync } from "node:fs";
@@ -19,8 +20,9 @@ for await (const c of process.stdin) input += c;
 
 const log = (entry) => process.env.FAKE_LOG && appendFileSync(process.env.FAKE_LOG, JSON.stringify(entry) + "\n");
 const reply = (obj) => {
-  process.stdout.write(JSON.stringify({ type: "result", is_error: false, result: JSON.stringify(obj) }));
-  process.exit(0);
+  // Exit only after stdout is flushed: a pipe may take large replies in pieces.
+  process.stdout.write(JSON.stringify({ type: "result", is_error: false, result: JSON.stringify(obj) }), () => process.exit(0));
+  return new Promise(() => {});
 };
 const format = /## Format: Short/.test(input) ? "short" : /## Format: Landscape/.test(input) ? "main" : null;
 
@@ -31,7 +33,7 @@ if (input.includes("You are the researcher")) {
   const v2 = modes.has("research-v2");
   const claims = Array.from({ length: 8 }, (_, i) => ({ id: `c${i + 1}`, text: `Fact number ${i + 1}${v2 ? " (revised)" : ""}`, status: "supported", importance: 3, sources: src(i + 1) }));
   claims.push({ id: "weak", text: "A rumour", status: "insufficient", note: "no source found", sources: [] });
-  reply({
+  await reply({
     qualification: { verdict: "proceed", centralQuestion: "How does it work?", angles: [{ angle: "The mechanism", question: "How?", strengths: "clear", weaknesses: "none", evidence: "strong" }], selectedAngle: "The mechanism", reason: "best evidence", scores: { curiosity: 4, depth: 4, evidence: 5, misconceptions: 3, demonstrations: 4, musical: 3 }, supportedMinutes: { min: 1, max: 12 }, shortInsight: "The one key idea" },
     audience: "curious people", mechanism: "A causes B, which causes C.",
     thesis: { statement: "A leads to C through B", mentalModel: "a relay", claimIds: modes.has("unsupported-thesis") ? ["weak"] : ["c1", "c2"] },
@@ -55,7 +57,7 @@ if (input.includes("plan ONE video in the requested format")) {
   }
   const n = format === "short" ? 3 : 6;
   const roles = format === "short" ? ["hook", "mechanism", "resolution"] : ["hook", "setup", "mechanism", "example", "complication", "resolution"];
-  reply({
+  await reply({
     openingQuestion: "How?", understandingChange: "from magic to mechanism", structure: "causal-chain", prerequisites: ["A"],
     beats: roles.slice(0, n).map((role, i) => ({ id: `b${i + 1}`, role, point: `point ${i + 1}`, claimIds: role === "hook" || role === "resolution" ? [] : [`c${i + 1}`], seconds: target / n, visual: "diagram" })),
     keyExample: { description: "a case", claimIds: ["c4"] }, complication: { description: "a twist", claimIds: ["c3"] }, conclusion: "A to C via B",
@@ -71,7 +73,7 @@ if (input.includes("You write the script for ONE format")) {
   }
   // Enough narration to land near the target at the given rate (bars and chorus add a little).
   const perShot = format === "short" ? 25 : 40;
-  const words = Math.round(((target * wpm) / 60) * 0.85);
+  const words = Math.round(((target * wpm) / 60) * 0.85) * (format === "short" && modes.has("overlong-short") ? 3 : 1);
   const n = Math.max(format === "short" ? 3 : 8, Math.round(words / perShot));
   const tag = format === "short" ? "short" : "long";
   const shots = Array.from({ length: n }, (_, i) => ({
@@ -80,7 +82,7 @@ if (input.includes("You write the script for ONE format")) {
     claims: [`c${(i % 8) + 1}`],
   }));
   shots.splice(2, 0, { id: `${tag}-chorus`, section: "chorus", lyric: "A to B to C", purpose: "chorus", claims: [] });
-  reply({ slug: "x", title: "Test topic", brief: { audience: "all", learningGoal: "explain A to C", hook: "How?" }, world: "night", music: { bpm: 120, key: "C", mode: "major", mood: "bright" }, shots });
+  await reply({ slug: "x", title: "Test topic", brief: { audience: "all", learningGoal: "explain A to C", hook: "How?" }, world: "night", music: { bpm: 120, key: "C", mode: "major", mood: "bright" }, shots });
 }
 
 if (input.includes("independent editor reviewing ONE script")) {
@@ -94,19 +96,19 @@ if (input.includes("independent editor reviewing ONE script")) {
   const scores = weak
     ? { accuracy: 5, clarity: 3, progression: 5, specificity: 5, examples: 5, engagement: 5, memorability: 5, formatFit: 5, music: 5, redundancy: 5 }
     : { accuracy: 5, clarity: 4, progression: 4, specificity: 4, examples: 4, engagement: 4, memorability: 4, formatFit: 4, music: 4, redundancy: 4 };
-  reply({ scores, blocking: [], findings: weak ? [{ shot, criterion: "clarity", severity: "major", problem: "jargon", fix: "explain it" }] : [], summary: weak ? "high average but unclear" : "teaches the chain" });
+  await reply({ scores, blocking: [], findings: weak ? [{ shot, criterion: "clarity", severity: "major", problem: "jargon", fix: "explain it" }] : [], summary: weak ? "high average but unclear" : "teaches the chain" });
 }
 
 if (input.includes("strict fact-checker")) {
   const items = JSON.parse(input.slice(input.lastIndexOf("Items:") + 6));
   log({ kind: "factcheck", n: items.length });
-  reply({ claims: items.map((i) => ({ shot: i.shot, claim: i.text, verdict: "ok", sources: [{ url: "https://example.org/x", title: "X", passage: "y" }] })) });
+  await reply({ claims: items.map((i) => ({ shot: i.shot, claim: i.text, verdict: "ok", sources: [{ url: "https://example.org/x", title: "X", passage: "y" }] })) });
 }
 
 if (input.includes("creative director and storyboard artist")) {
   const ids = input.slice(input.lastIndexOf("## Direct these shots")).split("\n")[1].split(",").map((s) => s.trim()).filter(Boolean);
   log({ kind: "direct", n: ids.length, hasOutline: input.includes("## Approved outline"), hasClaims: input.includes("## Research claims stated in the script") });
-  reply({ shots: ids.map((id, i) => ({ id, visual: i % 2 ? { type: "steps", steps: [{ icon: "check", label: "A" }, { icon: "star", label: "B" }] } : { type: "kinetic", style: "stack", lines: ["A to C"] } })) });
+  await reply({ shots: ids.map((id, i) => ({ id, visual: i % 2 ? { type: "steps", steps: [{ icon: "check", label: "A" }, { icon: "star", label: "B" }] } : { type: "kinetic", style: "stack", lines: ["A to C"] } })) });
 }
 
 log({ kind: "unknown", head: input.slice(0, 200) });

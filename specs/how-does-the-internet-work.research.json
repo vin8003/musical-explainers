@@ -1,0 +1,615 @@
+{
+  "qualification": {
+    "verdict": "proceed",
+    "centralQuestion": "When you hit send on a video, what actually happens to get it across the world and onto someone else's screen?",
+    "angles": [
+      {
+        "angle": "Packet switching, addressing, and hop-by-hop routing (the core data-moving mechanism)",
+        "question": "How does a message actually travel from one device to another with no dedicated wire reserved for it?",
+        "strengths": "Directly answers the title's promise with a real, teachable mechanism (connectionless packet switching, independent routing, TCP reliability); backed by primary protocol specs (RFC 791, RFC 793) and the designers' own historical account; naturally explains resilience and 'no one owns the internet'; supports a strong misconception correction (routing isn't real-time 'fastest path' sensing).",
+        "weaknesses": "More abstract than the physical-cable hook; requires care not to overstate how dynamically routes change per packet.",
+        "evidence": "strong"
+      },
+      {
+        "angle": "Physical infrastructure: undersea fiber-optic cables and light-speed latency",
+        "question": "How does a signal cross an entire ocean in under a second?",
+        "strengths": "Vivid, concrete, matches the producer's hook image exactly; good industry data available (TeleGeography, ICPC) on cable counts and the ~2/3-c fiber speed.",
+        "weaknesses": "Thinner as a standalone mechanism — it's mostly a physics fact (refractive index slows light) plus a fun infrastructure census, not a decision-making process a chorus can dramatize over multiple verses; can't alone explain 'how the internet works' as the title asks.",
+        "evidence": "strong"
+      },
+      {
+        "angle": "DNS / naming: how a typed name becomes a machine address",
+        "question": "How does your browser know which machine 'youtube.com' actually means?",
+        "strengths": "Clean mechanism, good primary sources (RFC 1034/1035), relatable misconception ('the address bar IS the destination').",
+        "weaknesses": "Answers a narrower question than 'how does the internet work'; doesn't touch the title's implied promise about data travel at all.",
+        "evidence": "strong"
+      }
+    ],
+    "selectedAngle": "Packet switching, addressing, and hop-by-hop routing (the core data-moving mechanism)",
+    "reason": "This is the mechanism the title's question is actually asking about. It supports a real mental model (break into addressed packets, forward independently hop-by-hop, no central map, add reliability on top), has primary-source backing strong enough to make precise claims, and corrects a real, commonly-repeated misconception. The undersea-cable hook survives intact as the physical-layer example/demonstration inside this angle rather than needing to be the whole video.",
+    "scores": {
+      "curiosity": 4,
+      "depth": 4,
+      "evidence": 5,
+      "misconceptions": 4,
+      "demonstrations": 4,
+      "musical": 4
+    },
+    "supportedMinutes": {
+      "min": 4,
+      "max": 6
+    },
+    "shortInsight": "Your video doesn't travel as one continuous stream — it's chopped into separately addressed packets that can take different paths and only get reassembled once they all arrive, which is exactly why the internet keeps working even when parts of it break."
+  },
+  "audience": "curious kids and adults who use the internet daily but have never wondered what actually happens when they hit send",
+  "mechanism": "A sending device splits data into many small units called packets. Every packet carries its own header with a source and destination address (IP) and, for most reliable transfers, a sequence number added by a second protocol (TCP) stacked on top of IP. Each packet is then forwarded independently: every router along the way looks only at the destination address, consults its own local routing table, and passes the packet to the next router — a 'hop.' No router holds a map of the whole internet and no circuit is reserved for the transmission; the network is connectionless. Because of this, packets can end up taking different physical routes, especially if a link fails or a network splits traffic across multiple paths — though in ordinary operation the same destination usually keeps following the same path until something changes. At the receiving end, TCP uses the sequence numbers to put packets back in order, detect duplicates, and request retransmission of anything that never arrived. Over long distances, including across oceans, the hops themselves are mostly pulses of light traveling through glass fiber-optic cable, moving at roughly two-thirds the speed of light in vacuum because of the glass's refractive index.",
+  "thesis": {
+    "statement": "The internet works by breaking data into small, independently addressed packets that routers forward one hop at a time using only their own local tables — with no dedicated circuit and no central map — while a second protocol layered on top adds sequence numbers so the receiving end can check, reorder, and request resends of anything missing.",
+    "mentalModel": "Think of a long letter mailed as dozens of separate, individually addressed postcards sent through a chain of sorting offices. Each office only knows which neighboring office is next for a given address — not the whole route — so postcards can end up going through different offices. A number written on each postcard lets the recipient lay them back out in the right order and ask for a reprint of any that never arrive.",
+    "claimIds": [
+      "packet-switching-basic",
+      "datagram-independence",
+      "routers-forward-by-address",
+      "no-global-routing-map",
+      "tcp-sequence-numbers",
+      "tcp-ack-retransmit"
+    ]
+  },
+  "prerequisites": [
+    {
+      "term": "packet",
+      "definition": "A small chunk of data traveling with its own header (addresses, sequence info) that networks move as a single independent unit."
+    },
+    {
+      "term": "IP address",
+      "definition": "A fixed-length numeric address, carried in every packet's header, identifying the source or destination machine."
+    },
+    {
+      "term": "router",
+      "definition": "A device that reads a packet's destination address and forwards it to the next machine on the way there, using its own local routing table."
+    },
+    {
+      "term": "routing table",
+      "definition": "A router's local list of 'for this destination, send to this next hop' — not a map of the whole internet."
+    },
+    {
+      "term": "TCP/IP",
+      "definition": "The pair of stacked protocols where IP handles addressing/independent delivery of packets and TCP (on top) handles ordering, acknowledgment, and retransmission."
+    },
+    {
+      "term": "fiber-optic cable",
+      "definition": "A glass strand that carries data as pulses of light; the medium used for most long-distance and undersea internet links."
+    }
+  ],
+  "claims": [
+    {
+      "id": "packet-switching-basic",
+      "text": "The internet moves data by breaking it into small, independently addressed units called packets rather than sending it as one continuous stream over a dedicated line.",
+      "status": "supported",
+      "importance": 5,
+      "sources": [
+        {
+          "url": "https://www.rfc-editor.org/rfc/rfc791.html",
+          "title": "RFC 791: Internet Protocol",
+          "passage": "The Internet Protocol is designed for use in interconnected systems of packet-switched computer communication networks... There are no connections or logical circuits.",
+          "supports": "The internet's basic unit of transport is the independently routed packet, not a reserved circuit.",
+          "kind": "primary",
+          "accessed": "fetched"
+        }
+      ]
+    },
+    {
+      "id": "circuit-switching-rejected",
+      "text": "In the early 1960s, researchers found that the circuit-switched design of the telephone network was poorly suited to bursty computer-to-computer traffic, which helped motivate the shift to packet switching.",
+      "status": "supported",
+      "importance": 3,
+      "sources": [
+        {
+          "url": "https://www.internetsociety.org/internet/history-internet/brief-history-internet/",
+          "title": "A Brief History of the Internet",
+          "passage": "...the circuit switched telephone system was totally inadequate for the job... Kleinrock had shown in 1961 that packet switching was a more efficient switching method.",
+          "supports": "Packet switching was adopted because circuit switching didn't fit bursty data traffic.",
+          "kind": "primary",
+          "accessed": "fetched"
+        }
+      ]
+    },
+    {
+      "id": "packet-header-addresses",
+      "text": "Every IP packet's header carries a fixed-length source address and a fixed-length destination address, which is how a packet carries its own 'from' and 'to' information.",
+      "status": "supported",
+      "importance": 5,
+      "sources": [
+        {
+          "url": "https://www.rfc-editor.org/rfc/rfc791.html",
+          "title": "RFC 791: Internet Protocol",
+          "passage": "Source Address: 32 bits — The source address. Destination Address: 32 bits — The destination address.",
+          "supports": "Every packet contains its own addressing information in the header.",
+          "kind": "primary",
+          "accessed": "fetched"
+        }
+      ]
+    },
+    {
+      "id": "datagram-independence",
+      "text": "IP treats every packet as a completely independent unit unrelated to any other packet from the same transmission — there is no connection or circuit reserved for a given exchange.",
+      "status": "supported",
+      "importance": 5,
+      "sources": [
+        {
+          "url": "https://www.rfc-editor.org/rfc/rfc791.html",
+          "title": "RFC 791: Internet Protocol",
+          "passage": "The internet protocol treats each internet datagram as an independent entity unrelated to any other internet datagram. There are no connections or logical circuits.",
+          "supports": "The connectionless, independent nature of each packet.",
+          "kind": "primary",
+          "accessed": "fetched"
+        }
+      ]
+    },
+    {
+      "id": "routers-forward-by-address",
+      "text": "Routers ('internet modules' in the original spec) read only the destination address in a packet's header and use it to pass the packet toward its destination, through one network after another.",
+      "status": "supported",
+      "importance": 5,
+      "sources": [
+        {
+          "url": "https://www.rfc-editor.org/rfc/rfc791.html",
+          "title": "RFC 791: Internet Protocol",
+          "passage": "The internet modules use the addresses carried in the internet header to transmit internet datagrams toward their destinations. The datagrams are routed from one internet module to another through individual networks based on the interpretation of an internet address.",
+          "supports": "Hop-by-hop forwarding based on header address.",
+          "kind": "primary",
+          "accessed": "fetched"
+        }
+      ]
+    },
+    {
+      "id": "host-splits-data",
+      "text": "Before sending a file or video, the sender's networking software divides it into many packets sized to fit the links it will cross, which is why even a short video can end up as thousands of separate pieces.",
+      "status": "qualified",
+      "qualification": "The maximum packet size depends on the specific network link technology in use; 'thousands' is a reasonable order-of-magnitude dramatization for a typical video file, not a fixed, universal number.",
+      "importance": 4,
+      "sources": [
+        {
+          "url": "https://www.rfc-editor.org/rfc/rfc791.html",
+          "title": "RFC 791: Internet Protocol",
+          "passage": "The internet protocol also provides for fragmentation and reassembly of long datagrams, if necessary, for transmission through 'small packet' networks.",
+          "supports": "Data too large for one packet is split into multiple packets appropriate to the networks it crosses.",
+          "kind": "primary",
+          "accessed": "fetched"
+        }
+      ]
+    },
+    {
+      "id": "ip-fragmentation",
+      "text": "IP also supports fragmenting an oversized datagram into smaller pieces mid-route when it needs to cross a network that can't carry a packet that large, then reassembling it at the far end.",
+      "status": "supported",
+      "importance": 2,
+      "sources": [
+        {
+          "url": "https://www.rfc-editor.org/rfc/rfc791.html",
+          "title": "RFC 791: Internet Protocol",
+          "passage": "The internet protocol also provides for fragmentation and reassembly of long datagrams, if necessary, for transmission through 'small packet' networks.",
+          "supports": "Mid-route fragmentation and reassembly capability of IP.",
+          "kind": "primary",
+          "accessed": "fetched"
+        }
+      ]
+    },
+    {
+      "id": "tcp-sequence-numbers",
+      "text": "TCP, the protocol layered on top of IP for most reliable transfers, assigns a sequence number to every octet of data sent, which lets the receiver put pieces back in the correct order.",
+      "status": "supported",
+      "importance": 5,
+      "sources": [
+        {
+          "url": "https://www.rfc-editor.org/rfc/rfc793.html",
+          "title": "RFC 793: Transmission Control Protocol",
+          "passage": "A fundamental notion in the design is that every octet of data sent over a TCP connection has a sequence number.",
+          "supports": "Sequence numbering is the basis for ordering and acknowledgment.",
+          "kind": "primary",
+          "accessed": "fetched"
+        }
+      ]
+    },
+    {
+      "id": "tcp-ack-retransmit",
+      "text": "TCP requires the receiver to send a positive acknowledgment (ACK) for data received; if the sender doesn't get an ACK within a timeout, it retransmits that data.",
+      "status": "supported",
+      "importance": 5,
+      "sources": [
+        {
+          "url": "https://www.rfc-editor.org/rfc/rfc793.html",
+          "title": "RFC 793: Transmission Control Protocol",
+          "passage": "This is achieved by assigning a sequence number to each octet transmitted, and requiring a positive acknowledgment (ACK) from the receiving TCP. If the ACK is not received within a timeout interval, the data is retransmitted.",
+          "supports": "The acknowledgment/retransmission mechanism that makes delivery reliable.",
+          "kind": "primary",
+          "accessed": "fetched"
+        }
+      ]
+    },
+    {
+      "id": "tcp-handles-loss-duplication-reorder",
+      "text": "TCP is explicitly designed to recover from data that the underlying network loses, duplicates, or delivers out of order, using sequence numbers to detect duplicates and restore order.",
+      "status": "supported",
+      "importance": 4,
+      "sources": [
+        {
+          "url": "https://www.rfc-editor.org/rfc/rfc793.html",
+          "title": "RFC 793: Transmission Control Protocol",
+          "passage": "The TCP must recover from data that is damaged, lost, duplicated, or delivered out of order by the internet communication system.",
+          "supports": "TCP's design goal of recovering from an imperfect underlying network.",
+          "kind": "primary",
+          "accessed": "fetched"
+        }
+      ]
+    },
+    {
+      "id": "layering-ip-vs-tcp",
+      "text": "Getting packets to the right machine (addressing/forwarding) and making sure the full message arrives complete and in order are handled by two separate, stacked protocols — IP for the former, TCP for the latter.",
+      "status": "supported",
+      "importance": 4,
+      "sources": [
+        {
+          "url": "https://www.rfc-editor.org/rfc/rfc791.html",
+          "title": "RFC 791: Internet Protocol",
+          "passage": "The internet protocol treats each internet datagram as an independent entity unrelated to any other internet datagram.",
+          "supports": "IP's job is limited to independent packet addressing/delivery.",
+          "kind": "primary",
+          "accessed": "fetched"
+        },
+        {
+          "url": "https://www.rfc-editor.org/rfc/rfc793.html",
+          "title": "RFC 793: Transmission Control Protocol",
+          "passage": "A fundamental notion in the design is that every octet of data sent over a TCP connection has a sequence number.",
+          "supports": "TCP's job, layered on top of IP, is ordering and reliability.",
+          "kind": "primary",
+          "accessed": "fetched"
+        }
+      ]
+    },
+    {
+      "id": "no-global-routing-map",
+      "text": "No single router, computer, or company holds a master map of the entire internet; each router independently decides the next hop using only its own local routing table, and there is no global control at the operations level.",
+      "status": "supported",
+      "importance": 5,
+      "sources": [
+        {
+          "url": "https://www.internetsociety.org/internet/history-internet/brief-history-internet/",
+          "title": "A Brief History of the Internet",
+          "passage": "There would be no global control at the operations level.",
+          "supports": "Absence of a central routing authority or global map.",
+          "kind": "primary",
+          "accessed": "fetched"
+        },
+        {
+          "url": "https://www.rfc-editor.org/info/rfc1958/",
+          "title": "RFC 1958: Architectural Principles of the Internet",
+          "passage": "The intelligence is end to end rather than hidden in the network.",
+          "supports": "Supports the decentralized, no-global-state design principle.",
+          "kind": "primary",
+          "accessed": "search-result"
+        }
+      ]
+    },
+    {
+      "id": "network-of-networks",
+      "text": "The internet is a 'network of networks': thousands of separately owned and operated networks (ISPs, universities, companies, etc.) interconnect and agree to carry each other's traffic, each free to use its own internal design.",
+      "status": "supported",
+      "importance": 4,
+      "sources": [
+        {
+          "url": "https://www.internetsociety.org/internet/history-internet/brief-history-internet/",
+          "title": "A Brief History of the Internet",
+          "passage": "Each distinct network would have to stand on its own and no internal changes could be required to any such network to connect it to the Internet... [it] may have its own unique interface... can be designed in accordance with the specific environment and user requirements of that network.",
+          "supports": "The internet connects independently designed, independently operated networks.",
+          "kind": "primary",
+          "accessed": "fetched"
+        }
+      ]
+    },
+    {
+      "id": "gateways-stateless",
+      "text": "The internet's original design calls for connecting networks through gateways/routers that retain no information about the individual flows of packets passing through them — they simply forward based on each packet's own address.",
+      "status": "supported",
+      "importance": 3,
+      "sources": [
+        {
+          "url": "https://www.internetsociety.org/internet/history-internet/brief-history-internet/",
+          "title": "A Brief History of the Internet",
+          "passage": "Black boxes would be used to connect the networks; these would later be called gateways and routers. There would be no information retained by the gateways about the individual flows of packets passing through them.",
+          "supports": "Routers don't track individual flows; they just forward per-packet.",
+          "kind": "primary",
+          "accessed": "fetched"
+        }
+      ]
+    },
+    {
+      "id": "packets-can-reroute-on-change",
+      "text": "Because routing is connectionless and decided hop-by-hop from local tables, packets between the same two endpoints can take different physical paths, especially if a link fails, a network's topology changes, or a provider load-balances traffic across multiple equal-cost links.",
+      "status": "qualified",
+      "qualification": "This is not generally because routers sense real-time traffic 'busyness' and re-pick the single fastest path for every individual packet on the fly — that framing (a router choosing 'whichever path looks fastest and least busy at that moment') is a common popular-science oversimplification. In ordinary operation, destination-based routing tends to send packets to the same destination along the same path until something changes (a failure, a policy/table update, or a load-balancing hash) rather than re-deciding per packet based on momentary congestion.",
+      "importance": 4,
+      "sources": [
+        {
+          "url": "https://www.rfc-editor.org/rfc/rfc791.html",
+          "title": "RFC 791: Internet Protocol",
+          "passage": "The internet protocol treats each internet datagram as an independent entity unrelated to any other internet datagram.",
+          "supports": "The structural basis for why different packets CAN take different paths (no fixed circuit).",
+          "kind": "primary",
+          "accessed": "fetched"
+        },
+        {
+          "url": "https://brainly.com/question/44577302",
+          "title": "Routers along the Internet backbone forward data packets using the fastest available (discussion)",
+          "passage": "The statement that routers forward data packets using the fastest available path is false; routing decisions are based on destination IP and existing routing tables, updated periodically rather than per-packet in real time.",
+          "supports": "Caution against overstating real-time, per-packet 'fastest path' routing behavior.",
+          "kind": "secondary",
+          "accessed": "search-result"
+        }
+      ]
+    },
+    {
+      "id": "arpanet-origin",
+      "text": "The ARPANET, which went live in 1969, was the pioneering US packet-switching network whose design grew into today's internet.",
+      "status": "supported",
+      "importance": 3,
+      "sources": [
+        {
+          "url": "https://www.internetsociety.org/internet/history-internet/brief-history-internet/",
+          "title": "A Brief History of the Internet",
+          "passage": "The original ARPANET grew into the Internet... beginning with the ARPANET as the pioneering packet switching network.",
+          "supports": "ARPANET as the historical precursor to the internet.",
+          "kind": "primary",
+          "accessed": "fetched"
+        }
+      ]
+    },
+    {
+      "id": "packet-switching-pioneers",
+      "text": "Packet switching as a concept was developed independently in the early-to-mid 1960s by Paul Baran at RAND, Donald Davies at the UK's National Physical Laboratory (who coined the term 'packet'), and Leonard Kleinrock at MIT, who published the first paper on packet-switching theory in 1961.",
+      "status": "supported",
+      "importance": 3,
+      "sources": [
+        {
+          "url": "https://www.internetsociety.org/internet/history-internet/brief-history-internet/",
+          "title": "A Brief History of the Internet",
+          "passage": "Leonard Kleinrock at MIT published the first paper on packet switching theory in July 1961... the work at MIT (1961-1967), at RAND (1962-1965), and at NPL (1964-1967) had all proceeded in parallel without any of the researchers knowing about the other work.",
+          "supports": "Independent, parallel origin of packet switching across three research groups.",
+          "kind": "primary",
+          "accessed": "fetched"
+        }
+      ]
+    },
+    {
+      "id": "tcpip-origin",
+      "text": "Vint Cerf and Bob Kahn designed TCP/IP in the early-to-mid 1970s specifically to let separately designed, independently run networks interconnect without requiring internal changes to any of them — the origin of 'internetworking.'",
+      "status": "supported",
+      "importance": 4,
+      "sources": [
+        {
+          "url": "https://www.internetsociety.org/internet/history-internet/brief-history-internet/",
+          "title": "A Brief History of the Internet",
+          "passage": "The idea of open-architecture networking was first introduced by Kahn shortly after having arrived at DARPA in 1972... Kahn decided to develop a new version of the protocol which could meet the needs of an open-architecture network environment. This protocol would eventually be called the Transmission Control Protocol/Internet Protocol (TCP/IP).",
+          "supports": "TCP/IP's origin and purpose as an internetworking protocol.",
+          "kind": "primary",
+          "accessed": "fetched"
+        }
+      ]
+    },
+    {
+      "id": "fiber-optic-medium",
+      "text": "Long-distance internet links, including the cables that cross oceans, typically carry data as pulses of light through glass optical fiber.",
+      "status": "supported",
+      "importance": 4,
+      "sources": [
+        {
+          "url": "https://resources.telegeography.com/the-speed-of-light-never-changes-except-when-it-does",
+          "title": "The Speed of Light Never Changes—Except When it Does",
+          "passage": "The speed of light is slowed down when it goes through matter. This includes glass, which is why fiber optic fans care about calculating the impact glass has on the speed of light.",
+          "supports": "Long-haul and submarine links use glass fiber carrying light.",
+          "kind": "authoritative",
+          "accessed": "fetched"
+        }
+      ]
+    },
+    {
+      "id": "fiber-light-speed",
+      "text": "Light signals inside long-haul fiber-optic cable travel at roughly two-thirds the speed of light in vacuum — about 200,000 km/s — because glass's refractive index (about 1.467 for the relevant fiber) slows light down versus free space.",
+      "status": "supported",
+      "importance": 4,
+      "sources": [
+        {
+          "url": "https://resources.telegeography.com/the-speed-of-light-never-changes-except-when-it-does",
+          "title": "The Speed of Light Never Changes—Except When it Does",
+          "passage": "Using a refractive index of 1.467, light travels through the fiber at approximately 204,357 km per second... roughly 67% of light's speed in a vacuum.",
+          "supports": "Exact figure for light speed in submarine/long-haul fiber and why it's slower than c.",
+          "kind": "authoritative",
+          "accessed": "fetched"
+        }
+      ]
+    },
+    {
+      "id": "submarine-cable-count",
+      "text": "As of 2026 there are more than 600 submarine cable systems in service worldwide (607 in-service, 102 planned, per TeleGeography), physically linking continents across ocean floors.",
+      "status": "supported",
+      "importance": 3,
+      "sources": [
+        {
+          "url": "https://resources.telegeography.com/how-many-submarine-cables-are-there-anyway",
+          "title": "How Many Submarine Cables Are There, Anyway?",
+          "passage": "As of 2026, that's a whopping 607 in-service systems, with another 102 planned.",
+          "supports": "Current count of operational and planned submarine cable systems.",
+          "kind": "authoritative",
+          "accessed": "fetched"
+        }
+      ]
+    },
+    {
+      "id": "submarine-cables-carry-most-traffic",
+      "text": "Submarine fiber-optic cables carry the large majority of international/intercontinental internet and data traffic, with satellites handling only a small share.",
+      "status": "qualified",
+      "qualification": "The precise percentage commonly repeated in media (often '99%') is not pinned to one single authoritative figure. The International Cable Protection Committee's own public materials describe cables as carrying 'the vast majority of international data traffic' without citing one exact number, and secondary sources vary between roughly 95% and 99.9%. Script language should say 'the vast majority' rather than asserting a specific percentage as fact.",
+      "importance": 4,
+      "sources": [
+        {
+          "url": "https://www.iscpc.org/news/media-enquiries/",
+          "title": "International Cable Protection Committee (ICPC) — Media Enquiries & FAQ",
+          "passage": "Submarine telecommunications cables form the backbone of international digital connectivity and carry the vast majority of international data traffic.",
+          "supports": "Cables, not satellites, carry most international data traffic.",
+          "kind": "authoritative",
+          "accessed": "fetched"
+        }
+      ]
+    }
+  ],
+  "misconceptions": [
+    {
+      "misconception": "Routers actively sense real-time traffic congestion and personally pick the single fastest, least-busy path for every packet as it passes through, the way a GPS app reroutes around traffic.",
+      "correction": "In ordinary operation, each router simply looks up the destination in its own locally-stored routing table (built from periodic exchanges with neighboring routers), and packets to a given destination usually keep following the same path. Paths change mainly when the topology changes — a link fails, a route is withdrawn, a network's policy updates — or when a network deliberately splits traffic across multiple equal-cost links, not because of moment-to-moment 'which path is less busy right now' sensing per packet.",
+      "claimIds": [
+        "packets-can-reroute-on-change",
+        "no-global-routing-map"
+      ]
+    },
+    {
+      "misconception": "Data moves across the internet over a dedicated line reserved for your conversation, the way a phone call reserves a continuous circuit.",
+      "correction": "IP is connectionless: every packet is an independent datagram with no circuit or connection reserved for it, which is also why early designers rejected telephone-style circuit switching as a model for computer networks.",
+      "claimIds": [
+        "packet-switching-basic",
+        "datagram-independence",
+        "circuit-switching-rejected"
+      ]
+    },
+    {
+      "misconception": "The internet is owned or centrally run by one company, government, or organization.",
+      "correction": "The internet is a voluntary 'network of networks' — thousands of independently owned and operated networks (ISPs, universities, companies) interconnect and agree to carry each other's traffic, with no global operational control and no single map of the whole system.",
+      "claimIds": [
+        "network-of-networks",
+        "no-global-routing-map",
+        "gateways-stateless"
+      ]
+    },
+    {
+      "misconception": "Long-distance and international data mostly travels wirelessly, the same way Wi-Fi works in your house.",
+      "correction": "Wi-Fi is only the last short wireless hop to a device. The vast majority of international internet traffic physically travels through glass fiber-optic cables, including hundreds of cables laid across ocean floors, as pulses of light.",
+      "claimIds": [
+        "fiber-optic-medium",
+        "submarine-cables-carry-most-traffic",
+        "submarine-cable-count"
+      ]
+    }
+  ],
+  "examples": [
+    {
+      "kind": "analogy",
+      "description": "Mailing a long letter as dozens of separately addressed postcards sent through a chain of sorting offices, where each office only knows which neighboring office is next for a given zip code, not the whole route.",
+      "claimIds": [
+        "packet-switching-basic",
+        "packet-header-addresses",
+        "no-global-routing-map"
+      ],
+      "caveat": "Real routers read only the address, not the content of a packet, and a mail sorting system is far more centrally planned than the internet deliberately is — don't imply a human-like 'sorter' is reading your data."
+    },
+    {
+      "kind": "analogy",
+      "description": "A relay race where each router hands the packet to the next runner it knows about, one hop at a time.",
+      "claimIds": [
+        "routers-forward-by-address"
+      ],
+      "caveat": "Unlike a scouted relay route chosen for speed, most routers aren't re-evaluating 'who's fastest right now' for each packet — they're following an existing table. Avoid implying real-time competitive path selection per packet."
+    },
+    {
+      "kind": "experiment",
+      "description": "Anyone can run the traceroute (or tracert on Windows) command from their own computer to a website and watch the real chain of router hops appear, one at a time — often crossing multiple cities or countries.",
+      "claimIds": [
+        "routers-forward-by-address",
+        "no-global-routing-map"
+      ]
+    },
+    {
+      "kind": "visual",
+      "description": "TeleGeography's publicly viewable Submarine Cable Map plots the actual routes of hundreds of real ocean-floor fiber cables connecting continents — a concrete visual for the undersea-cable hook.",
+      "claimIds": [
+        "submarine-cable-count",
+        "fiber-optic-medium"
+      ]
+    }
+  ],
+  "insights": [
+    {
+      "insight": "Packet switching plus connectionless, hop-by-hop forwarding is the single idea that explains why there's no dedicated wire per conversation and why the network can route around failures.",
+      "claimIds": [
+        "packet-switching-basic",
+        "datagram-independence",
+        "no-global-routing-map",
+        "packets-can-reroute-on-change"
+      ],
+      "why": "This is the foundational mental model; addressing, TCP reliability, and the physical cables are all detail layered on top of 'break it up, address each piece, forward independently.'"
+    },
+    {
+      "insight": "Reliability is added on top, not built in: IP itself promises nothing about order or delivery, so it's TCP's sequence numbers plus acknowledgment-and-retransmission that actually makes a 'perfect' download possible over an imperfect network.",
+      "claimIds": [
+        "tcp-sequence-numbers",
+        "tcp-ack-retransmit",
+        "tcp-handles-loss-duplication-reorder",
+        "layering-ip-vs-tcp"
+      ],
+      "why": "Explains the 'how does it always arrive correctly' half of the mystery and sets up the numbering/reassembly beat in the script."
+    },
+    {
+      "insight": "No one entity runs the internet — it's a cooperating federation of independently operated networks, which is also why there's no single point of failure that can take the whole thing down.",
+      "claimIds": [
+        "no-global-routing-map",
+        "network-of-networks",
+        "gateways-stateless"
+      ],
+      "why": "Answers the 'who's actually in charge' curiosity and reframes resilience as a deliberate design choice rather than a happy accident."
+    },
+    {
+      "insight": "The physical reality behind the abstraction is almost entirely wired glass: nearly all long-distance traffic, including under oceans, moves as light pulses in fiber at about two-thirds lightspeed — not invisible wireless magic.",
+      "claimIds": [
+        "fiber-optic-medium",
+        "fiber-light-speed",
+        "submarine-cable-count",
+        "submarine-cables-carry-most-traffic"
+      ],
+      "why": "Grounds the abstract packet story in a concrete, visualizable, slightly surprising physical infrastructure — strong hook material."
+    },
+    {
+      "insight": "Packets do not race each other in real time to find 'whichever path is fastest right now' — that's a popular oversimplification; paths mostly stay fixed until the network itself changes.",
+      "claimIds": [
+        "packets-can-reroute-on-change"
+      ],
+      "why": "Directly corrects a specific, commonly-repeated misconception that risks being stated as literal fact in the script."
+    }
+  ],
+  "uncertainties": [
+    "The exact percentage of international data traffic carried by submarine cables varies by source; no single authoritative figure was found, only 'vast majority' framing from the ICPC itself alongside commonly repeated but unpinned ~99% claims from secondary sources.",
+    "The degree to which real ISPs use per-flow versus per-packet load balancing (e.g., ECMP) across multiple paths is implementation-specific and not standardized the same way across the whole internet, so 'packets can take different paths' should be stated as a possibility tied to specific causes, not a constant behavior.",
+    "The reliable, numbered-and-resent story (TCP) applies most cleanly to file-like transfers such as a stored video being downloaded; live video calls often use loss-tolerant protocols (UDP-based) that do not retransmit the same way, which this angle's claims do not cover."
+  ],
+  "exclusions": [
+    {
+      "claim": "The internet and the World Wide Web are the same thing.",
+      "reason": "Conflates the internet's packet-delivery infrastructure with one application (the Web/HTTP) built on top of it; out of scope for this packet-mechanism angle and would dilute the core lesson."
+    },
+    {
+      "claim": "Detailed inter-ISP routing policy (e.g., naming BGP specifically).",
+      "reason": "Too technical for a general-audience 5-10 minute explainer; the simplified 'each router has its own table, no global map' framing covers what a viewer needs without naming specific routing protocols."
+    },
+    {
+      "claim": "Routers pick the fastest, least-congested path in real time for every individual packet.",
+      "reason": "Not well supported as a description of ordinary destination-based routing; retained only as a misconception to correct, not as a factual claim for the script."
+    }
+  ],
+  "sourceQuality": "Core protocol claims rest on primary IETF specifications fetched directly (RFC 791 for IP addressing/independent datagrams/fragmentation, RFC 793 for TCP sequencing/acknowledgment/retransmission) — as authoritative as internet-mechanism sourcing gets. History and architecture claims (packet-switching origins, ARPANET, TCP/IP's purpose, decentralized design) come from the Internet Society's 'Brief History of the Internet,' fetched directly, co-written by the protocols' own designers (Cerf, Kahn, Leiner, et al.), making it effectively a primary source for 'why' questions. Physical-infrastructure claims (fiber light speed, refractive index, submarine cable counts, share of traffic) rest on TeleGeography and the International Cable Protection Committee, both fetched directly and the standard industry references used by journalists and other explainers. The one weakness is the correction to the 'routers dynamically pick the fastest path' misconception, which could only be corroborated with lower-quality secondary sources (forum/blog-level); it is flagged accordingly and framed as a qualification/misconception rather than an assertable fact.",
+  "version": 1,
+  "inputHash": "c337bbe951517bec",
+  "promptVersion": 1,
+  "at": "2026-10-10T18:09:11.604Z",
+  "topic": {
+    "slug": "how-does-the-internet-work",
+    "title": "How does the internet work?",
+    "angle": "Your cat video just travelled through an undersea cable in under a second."
+  }
+}

@@ -1,0 +1,131 @@
+{
+  "schemaVersion": 2,
+  "slug": "how-does-the-internet-work",
+  "title": "How does the internet work?",
+  "format": "short",
+  "brief": {
+    "audience": "curious kids and adults who use the internet daily but have never wondered what happens when they hit send",
+    "learningGoal": "Explain that a video is chopped into numbered, separately addressed packets forwarded hop by hop by routers with no master map, which is why the internet keeps working when a link breaks.",
+    "hook": "You hit send, and your video feels like one unbroken stream. It isn't."
+  },
+  "world": "night",
+  "direction": {
+    "status": "draft",
+    "at": "2026-10-10T22:47:04.836Z",
+    "by": "script"
+  },
+  "music": {
+    "bpm": 112,
+    "key": "E",
+    "mode": "minor",
+    "mood": "driving"
+  },
+  "shots": [
+    {
+      "id": "hook-shatter",
+      "section": "intro",
+      "purpose": "hook-continuous-stream-myth: Challenge the one-stream assumption and pose the question with a payoff.",
+      "narration": "You hit send on a video. It feels like one unbroken stream across the world. It isn't. So how does it arrive intact, even if a cable breaks?",
+      "headline": "Not one stream",
+      "claims": [
+        "packet-switching-basic"
+      ],
+      "visual": {
+        "type": "kinetic",
+        "style": "stack",
+        "lines": [
+          "Not one stream"
+        ]
+      }
+    },
+    {
+      "id": "chop-and-address",
+      "section": "verse",
+      "purpose": "chop-into-packets: Teach slicing, addressing and numbering before they are needed.",
+      "narration": "Your device slices the video into thousands of small packets. Each gets its own from and to address, and a sequence number. Each packet is independent.",
+      "headline": "Thousands of packets",
+      "claims": [
+        "packet-switching-basic",
+        "packet-header-addresses",
+        "host-splits-data",
+        "tcp-sequence-numbers",
+        "datagram-independence"
+      ],
+      "visual": {
+        "type": "kinetic",
+        "style": "stack",
+        "lines": [
+          "Thousands of packets"
+        ]
+      }
+    },
+    {
+      "id": "hop-by-hop",
+      "section": "verse",
+      "purpose": "hop-by-hop-no-map: Explain hop-by-hop forwarding with the postcard image.",
+      "narration": "Think of postcards and sorting offices. Each router reads the address, checks its short list, and hands the packet to the next one. None of them knows the whole route.",
+      "headline": "Sorting offices",
+      "claims": [
+        "routers-forward-by-address",
+        "no-global-routing-map",
+        "datagram-independence",
+        "packet-header-addresses"
+      ],
+      "visual": {
+        "type": "kinetic",
+        "style": "stack",
+        "lines": [
+          "Sorting offices"
+        ]
+      }
+    },
+    {
+      "id": "chorus-packets",
+      "section": "chorus",
+      "purpose": "hop-by-hop-no-map: Sing the mechanism.",
+      "lyric": "Chopped up. Addressed. Passed hand to hand.",
+      "claims": [
+        "packet-switching-basic",
+        "routers-forward-by-address"
+      ],
+      "visual": {
+        "type": "kinetic",
+        "style": "punch"
+      }
+    },
+    {
+      "id": "resilience",
+      "section": "outro",
+      "purpose": "resolution-reassembly-resilience: Resolve: rerouting around breaks and reordering on arrival.",
+      "narration": "If a link breaks, routers update their lists and packets can detour. At the end, the numbers put them back in order. No single path or map to break.",
+      "headline": "No single path to break",
+      "claims": [
+        "packets-can-reroute-on-change",
+        "tcp-sequence-numbers",
+        "no-global-routing-map"
+      ],
+      "visual": {
+        "type": "kinetic",
+        "style": "stack",
+        "lines": [
+          "No single path to break"
+        ]
+      }
+    }
+  ],
+  "editorial": {
+    "outlineHash": "8c4dfcf0a35c5e4a",
+    "researchHash": "92ef3a29598b410f",
+    "durationKey": "short:45/30-60@156wpm±0.15",
+    "promptVersion": 2,
+    "estimate": {
+      "seconds": 55.7,
+      "spokenWords": 113,
+      "sungWords": 7,
+      "wordsPerMinute": 156,
+      "verdict": "off-target",
+      "message": "0:56 is 24% from the 0:45 target (tolerance 15%)"
+    },
+    "at": "2026-10-10T22:47:04.837Z"
+  }
+}
