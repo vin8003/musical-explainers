@@ -67,14 +67,31 @@ export type Shot = {
   mascot?: { mood: MascotMood; position?: "left" | "right" } | null;
   accents?: { beat: number; sfx?: Sfx; target?: string }[];
   short?: boolean;
+  /** Editorial: ids of the research-dossier claims this shot states. */
+  claims?: string[];
   assets?: { id: string; required: boolean; role?: string }[];
   notes?: string;
+};
+
+export type Editorial = {
+  /** Which outline/settings this script was written from (for cache invalidation). */
+  outlineHash?: string;
+  researchHash?: string;
+  durationKey?: string;
+  promptVersion?: number;
+  /** Runtime estimate when the script was accepted. */
+  estimate?: { seconds: number; spokenWords: number; sungWords: number; wordsPerMinute: number; verdict: string; message: string };
+  at?: string;
 };
 
 export type VideoSpec = {
   schemaVersion: 2;
   slug: string;
   title: string;
+  /** The cut this storyboard was written for. Absent on older storyboards that serve both cuts. */
+  format?: "main" | "short";
+  /** Editorial provenance (ignored by the renderer). */
+  editorial?: Editorial;
   /** Editorial. */
   brief?: { audience?: string; learningGoal?: string; hook?: string };
   world?: World;
@@ -108,6 +125,7 @@ export declare const COLORS: ColorName[];
 export declare const ICONS: string[];
 export declare const VISUALS: Record<Visual["type"], string>;
 export declare const EDITORIAL: string[];
+export declare const SPEC_FORMATS: ("main" | "short")[];
 export declare const SCENES_3D: Record<string, string>;
 export declare const ANCHORS: Record<string, Record<string, [number, number]>>;
 export declare function resolveAnchor(subject: string, c: { anchor?: string; x?: number; y?: number }): { x: number; y: number };

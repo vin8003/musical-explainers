@@ -9,7 +9,7 @@ const out: Record<string, unknown> = {};
 for (const slug of process.argv.slice(2)) {
   try {
     const s = computeStatus(slug);
-    out[slug] = { stages: s.stages, problems: s.problems, lint: s.lint, candidate: s.candidate?.id ?? null };
+    out[slug] = { stages: s.stages, problems: s.problems, lint: s.lint, candidate: s.candidate?.id ?? null, formats: s.formats };
   } catch (e) {
     out[slug] = { error: (e as Error).message };
   }

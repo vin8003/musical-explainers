@@ -12,6 +12,7 @@ import type { RenderProps } from "../../src/types";
 import { claudeJson } from "../claude";
 import { paths, PipelineError, readJson, ROOT, writeJson } from "../core/files";
 import { updateState } from "../core/state";
+import { checkDuration } from "../../src/schema/settings.mjs";
 import { latestCandidate } from "./render";
 import type { RunCtx, StageResult } from "./types";
 
@@ -32,7 +33,7 @@ export type QaReport = {
   status: "pass" | "warn" | "fail";
   summary: string;
   findings: Finding[];
-  media: Record<string, { width: number; height: number; fps: number; seconds: number; expectedSeconds: number; video: string; audio: string | null; loudness?: { I: number; TP: number; LRA: number } | null }>;
+  media: Record<string, { width: number; height: number; fps: number; seconds: number; expectedSeconds: number; video: string; audio: string | null; loudness?: { I: number; TP: number; LRA: number } | null; range?: { targetSeconds: number; minSeconds: number; maxSeconds: number; verdict: string } }>;
   sheets: Record<string, string>;
   frames: { format: string; shot: string; index: number; type: string; pct: number; file: string }[];
   review?: { model: "claude"; inspected: string[]; overall: string; teaches: string; findings: Finding[] } | null;
@@ -127,9 +128,15 @@ function audioChecks(file: string, expectAudio: boolean, findings: Finding[], fo
   return { I, TP, LRA };
 }
 
-export function layoutLint(props: RenderProps): Finding[] {
+/** Render props of one cut: props-<format>.json, or the single props.json of older candidates. */
+export function candidateProps(dir: string, format: "main" | "short"): RenderProps | null {
+  return readJson<RenderProps | null>(join(dir, `props-${format}.json`), null) ?? readJson<RenderProps | null>(join(dir, "props.json"), null);
+}
+
+export function layoutLint(props: RenderProps, only?: "main" | "short"): Finding[] {
   const out: Finding[] = [];
   for (const [format, [w, h]] of [["main", [1920, 1080]], ["short", [1080, 1920]]] as const) {
+    if (only && format !== only) continue;
     const fmt = formatFor(w, h);
     const ids = new Set(props.timelines?.[format]?.shots.map((s) => s.id) ?? []);
     for (const s of props.spec.shots.filter((x) => ids.has(x.id))) {
@@ -168,15 +175,21 @@ export async function qaStage(ctx: RunCtx): Promise<StageResult> {
   const qaDir = join(dir, "qa");
   rmSync(qaDir, { recursive: true, force: true });
   mkdirSync(join(qaDir, "frames"), { recursive: true });
-  const props = readJson<RenderProps | null>(join(dir, "props.json"), null);
-  if (!props) throw new PipelineError(`Candidate ${cand.id} has no props.json`, "missing");
-  const findings: Finding[] = layoutLint(props);
+  const findings: Finding[] = [];
+  const propsBy: Partial<Record<"main" | "short", RenderProps>> = {};
+  for (const f of cand.formats as ("main" | "short")[]) {
+    const p = candidateProps(dir, f);
+    if (!p) throw new PipelineError(`Candidate ${cand.id} has no render props for ${f}`, "missing");
+    propsBy[f] = p;
+    findings.push(...layoutLint(p, f));
+  }
   const media: QaReport["media"] = {};
   const frames: QaReport["frames"] = [];
   const sheets: Record<string, string> = {};
   const hashes: { format: string; shot: string; type: string; section: string; hash: string }[] = [];
 
   for (const format of cand.formats as ("main" | "short")[]) {
+    const props = propsBy[format]!;
     const file = join(dir, `${format}.mp4`);
     const tl = props.timelines?.[format] as Timeline | undefined;
     if (!existsSync(file) || !tl) {
@@ -193,6 +206,12 @@ export async function qaStage(ctx: RunCtx): Promise<StageResult> {
     if (info.width !== wantW * (cand.preview ? 0.5 : 1) || info.height !== wantH * (cand.preview ? 0.5 : 1)) findings.push({ check: "dimensions", severity: "fail", format, message: `${info.width}x${info.height}, expected ${wantW}x${wantH}${cand.preview ? " at half scale" : ""}`, owner: "renderer" });
     if (Math.abs(info.fps - 30) > 0.01) findings.push({ check: "fps", severity: "fail", format, message: `${info.fps} fps, expected 30`, owner: "renderer" });
     if (Math.abs(info.seconds - expected) > 0.25) findings.push({ check: "duration", severity: "fail", format, message: `${info.seconds.toFixed(2)}s, timeline says ${expected.toFixed(2)}s`, owner: "renderer" });
+    // The rendered file against the job's configured range (music, chorus, transitions and tails included).
+    const range = ctx.settings.formats[format];
+    const dc = checkDuration(info.seconds, ctx.settings, format);
+    media[format].range = { ...range, verdict: dc.verdict };
+    if (dc.verdict === "short" || dc.verdict === "long") findings.push({ check: "duration-range", severity: "fail", format, message: `Final video ${dc.message}`, owner: "script" });
+    else if (dc.verdict === "off-target") findings.push({ check: "duration-target", severity: "warn", format, message: `Final video ${dc.message}`, owner: "script" });
     if (info.video !== "h264") findings.push({ check: "codec", severity: "warn", format, message: `video codec ${info.video}`, owner: "renderer" });
     if (expectAudio && !info.audio) findings.push({ check: "audio-stream", severity: "fail", format, message: "No audio stream, but the audio stage produced a mix", owner: "renderer" });
     if (!expectAudio) findings.push({ check: "audio-stream", severity: "warn", format, message: "Silent render: no audio was available for this candidate", owner: "audio" });
@@ -240,7 +259,8 @@ export async function qaStage(ctx: RunCtx): Promise<StageResult> {
   if (ctx.visualReview && Object.keys(sheets).length) {
     console.log("  asking Claude to inspect the contact sheets");
     const files = Object.values(sheets).map((s) => join(qaDir, s));
-    const shotList = props.spec.shots.map((s, i) => `${i + 1}. ${s.id} [${s.visual.type}] ${s.narration ?? s.lyric ?? ""}`).join("\n");
+    const props = (propsBy.main ?? propsBy.short)!;
+    const shotList = (Object.entries(propsBy) as ["main" | "short", RenderProps][]).map(([f, p]) => `${f}:\n${p.spec.shots.map((s, i) => `${i + 1}. ${s.id} [${s.visual.type}] ${s.narration ?? s.lyric ?? ""}`).join("\n")}`).join("\n");
     const r = await claudeJson<{ inspected: { file: string; description: string }[]; overall: string; teaches: string; findings: { shot: string; severity: "fail" | "warn"; category: string; problem: string; fix: string }[] }>(
       `${REVIEW_PROMPT}\n\nLearning goal: ${props.spec.brief?.learningGoal ?? props.spec.title}\n\nShots:\n${shotList}\n\nContact sheets:\n${files.map((f) => `- ${f}`).join("\n")}`,
       {
@@ -253,7 +273,7 @@ export async function qaStage(ctx: RunCtx): Promise<StageResult> {
         },
       }
     );
-    const ids = new Set(props.spec.shots.map((s) => s.id));
+    const ids = new Set(Object.values(propsBy).flatMap((p) => p!.spec.shots.map((s) => s.id)));
     review = {
       model: "claude",
       inspected: r.inspected.map((i) => `${i.file}: ${i.description}`),

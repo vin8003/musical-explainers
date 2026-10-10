@@ -9,8 +9,9 @@ import type { VideoSpec } from "../../src/schema/storyboard.mjs";
 import { hashOf, paths, PipelineError, readJson, ROOT, writeJson } from "../core/files";
 import { blenderInfo, renderClip } from "../blender";
 import { shotsFor } from "../../src/schema/timeline.mjs";
-import { loadSpec } from "./text";
-import type { RunCtx, StageResult } from "./types";
+import { cutSpecs } from "./audio";
+import type { CutSpecs } from "./audio";
+import type { Format, RunCtx, StageResult } from "./types";
 
 type Entry = { id: string; file: string; kind: string; license?: string; source?: string; attribution?: string };
 export type AssetReport = {
@@ -72,16 +73,26 @@ export function assetReport(spec: VideoSpec): AssetReport {
   };
 }
 
-export const assetsInputHash = (spec: VideoSpec) =>
-  hashOf({ shots: spec.shots.map((s) => ({ v: s.visual, a: s.assets, sh: s.short })), world: spec.world, song: spec.music.songSrc, manifest: readJson(paths.assetsManifest, {}), blender: process.env.BLENDER !== "off" && blenderInfo().available, q: process.env.BLENDER_QUALITY ?? "final" });
+/** Every shot of every cut, for asset resolution (a cut's own storyboard decides which shots it uses). */
+const union = (specs: CutSpecs): VideoSpec => {
+  const base = (specs.main ?? specs.short)!;
+  const shots = (Object.keys(specs) as Format[]).flatMap((f) => shotsFor(specs[f]!, f));
+  return { ...base, shots: shots.filter((s, i) => shots.indexOf(s) === i) };
+};
+
+export const assetsInputHash = (specs: CutSpecs) =>
+  hashOf({
+    cuts: Object.fromEntries((Object.keys(specs) as Format[]).sort().map((f) => [f, { shots: shotsFor(specs[f]!, f).map((s) => ({ id: s.id, v: s.visual, a: s.assets })), world: specs[f]!.world, song: specs[f]!.music.songSrc }])),
+    manifest: readJson(paths.assetsManifest, {}), blender: process.env.BLENDER !== "off" && blenderInfo().available, q: process.env.BLENDER_QUALITY ?? "final",
+  });
 
 export const loadAssetReport = (slug: string) => readJson<AssetReport | null>(join(paths.work(slug), "assets.json"), null);
 
 export async function assetsStage(ctx: RunCtx): Promise<StageResult> {
-  const spec = loadSpec(ctx.slug);
-  if (!spec) throw new PipelineError("No storyboard yet", "missing");
-  const report = assetReport(spec);
-  report.inputHash = assetsInputHash(spec);
+  const specs = cutSpecs(ctx.slug);
+  if (!specs.main && !specs.short) throw new PipelineError("No storyboard yet", "missing");
+  const report = assetReport(union(specs));
+  report.inputHash = assetsInputHash(specs);
   const prev = loadAssetReport(ctx.slug);
   if (prev?.inputHash === report.inputHash && !ctx.force && !report.missingRequired) return { summary: `cached: ${prev.builtins.length} built-in illustrations, clips ${describeClips(prev)}`, cached: true, inputHash: report.inputHash };
   // Optional 3D clips. A failure here never blocks the video: the shot's
@@ -89,12 +100,13 @@ export async function assetsStage(ctx: RunCtx): Promise<StageResult> {
   const b = blenderInfo();
   report.blender = { available: b.available, enabled: b.enabled, version: b.version };
   report.clips = {};
-  for (const s of spec.shots) {
-    if (s.visual.type !== "scene3d") continue;
-    const scene = s.visual.scene;
-    report.clips[s.id] = {};
-    for (const format of ctx.formats) {
-      if (!shotsFor(spec, format).some((x) => x.id === s.id)) continue;
+  for (const format of ctx.formats) {
+    const spec = specs[format];
+    if (!spec) continue;
+    for (const s of shotsFor(spec, format)) {
+      if (s.visual.type !== "scene3d") continue;
+      const scene = s.visual.scene;
+      report.clips[s.id] ??= {};
       if (!b.available || !b.enabled) {
         report.clips[s.id][format] = { status: "fallback", reason: b.reason ?? "Blender disabled (BLENDER=off)" };
         continue;

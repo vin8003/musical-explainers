@@ -10,14 +10,17 @@ import { emit, loadState, updateState } from "../core/state";
 import type { Candidate } from "../core/state";
 import type { RenderProps } from "../../src/types";
 import { assetsInputHash, loadAssetReport } from "./assets";
-import { audioInputHash, loadAudioManifest, timelinesFor } from "./audio";
-import { loadSpec } from "./text";
-import type { RunCtx, StageResult } from "./types";
+import { checkDuration } from "../../src/schema/settings.mjs";
+import type { Settings } from "../../src/schema/settings.mjs";
+import { audioInputHash, cutSpecs, loadAudioManifest, timelinesFor } from "./audio";
+import type { CutSpecs } from "./audio";
+import type { Format, RunCtx, StageResult } from "./types";
 
 export const COMPOSITION = { main: "Explainer", short: "Short" } as const;
 
 export const codeHash = () => hashDir(join(ROOT, "src"));
-export const specHash = (spec: unknown) => hashOf(spec);
+/** Identity of the storyboards behind the cuts (each cut renders its own). */
+export const specHash = (specs: CutSpecs) => hashOf(Object.fromEntries((Object.keys(specs) as Format[]).sort().map((f) => [f, specs[f]])));
 
 /** Runs the Remotion CLI, forwarding progress as @@ events. */
 export function remotion(args: string[], label: string): Promise<void> {
@@ -53,35 +56,44 @@ export function remotion(args: string[], label: string): Promise<void> {
   });
 }
 
-export function buildProps(slug: string) {
-  const spec = loadSpec(slug);
-  if (!spec) throw new PipelineError("No storyboard yet", "missing");
+/** Render props per cut: each cut gets its own storyboard, timeline, audio and 3D clips. */
+export function buildProps(slug: string, settings: Settings) {
+  const specs = cutSpecs(slug);
+  if (!specs.main && !specs.short) throw new PipelineError("No storyboard yet", "missing");
   const manifest = loadAudioManifest(slug);
-  const audioFresh = manifest?.inputHash === audioInputHash(spec);
-  const timelines = timelinesFor(spec, audioFresh ? manifest : null);
-  const audio = audioFresh && manifest ? Object.fromEntries(Object.entries(manifest.formats).map(([f, t]) => [f, { src: t!.src, status: t!.status, has: t!.has }])) : {};
+  const audioFresh = manifest?.inputHash === audioInputHash(specs, settings);
+  const timelines = timelinesFor(specs, audioFresh ? manifest : null, settings);
   const assets = loadAssetReport(slug);
-  const clips: RenderProps["clips"] = {};
-  if (assets?.inputHash === assetsInputHash(spec))
-    for (const [id, c] of Object.entries(assets.clips ?? {})) clips[id] = Object.fromEntries(Object.entries(c).filter(([, x]) => x?.src).map(([f, x]) => [f, { src: x!.src!, seconds: x!.seconds ?? 10 }]));
-  const props: RenderProps = { spec, timelines, audio, clips };
-  return { spec, props, manifest: audioFresh ? manifest : null, audioFresh };
+  const props: Partial<Record<Format, RenderProps>> = {};
+  for (const f of Object.keys(specs) as Format[]) {
+    const spec = specs[f]!;
+    const t = audioFresh ? manifest!.formats[f] : undefined;
+    const clips: RenderProps["clips"] = {};
+    if (assets?.inputHash === assetsInputHash(specs))
+      for (const [id, c] of Object.entries(assets.clips ?? {})) if (spec.shots.some((s) => s.id === id)) clips[id] = Object.fromEntries(Object.entries(c).filter(([k, x]) => k === f && x?.src).map(([k, x]) => [k, { src: x!.src!, seconds: x!.seconds ?? 10 }]));
+    props[f] = { spec, timelines: { [f]: timelines[f] }, audio: t ? { [f]: { src: t.src, status: t.status, has: t.has } } : {}, clips };
+  }
+  return { specs, props, manifest: audioFresh ? manifest : null, audioFresh };
 }
 
 export async function renderStage(ctx: RunCtx): Promise<StageResult> {
-  const { spec, props, manifest, audioFresh } = buildProps(ctx.slug);
+  const { specs, props, manifest, audioFresh } = buildProps(ctx.slug, ctx.settings);
   if (!audioFresh && !process.env.ALLOW_SILENT_RENDER) {
     throw new PipelineError("The audio is missing or out of date for this storyboard", "missing", "Run the audio stage first (or set ALLOW_SILENT_RENDER=1 for a silent preview).");
   }
   const release = lock(paths.renderLock, `render ${ctx.slug}`);
   try {
     if (ctx.shots?.length) return await renderShotPreviews(ctx, props);
+
     const id = `${stamp()}${ctx.preview ? "-preview" : ""}`;
     const dir = paths.candidate(ctx.slug, id);
     mkdirSync(dir, { recursive: true });
-    const propsPath = join(dir, "props.json");
-    writeJson(propsPath, props);
-    for (const format of ctx.formats) {
+    const formats = ctx.formats.filter((f) => props[f]);
+    for (const f of formats) writeJson(join(dir, `props-${f}.json`), props[f]);
+    // props.json stays the landscape cut's props, for tools that read one file.
+    writeJson(join(dir, "props.json"), props.main ?? props[formats[0]]);
+    for (const format of formats) {
+      const propsPath = join(dir, `props-${format}.json`);
       const tmp = join(dir, `${format}.partial.mp4`);
       console.log(`  rendering ${COMPOSITION[format]} (${format}${ctx.preview ? ", half resolution" : ""})`);
       emit({ event: "render", format, candidate: id });
@@ -99,32 +111,39 @@ export async function renderStage(ctx: RunCtx): Promise<StageResult> {
       id,
       createdAt: new Date().toISOString(),
       preview: ctx.preview,
-      formats: ctx.formats,
-      specHash: specHash(spec),
+      formats,
+      specHash: specHash(specs),
       audioHash: manifest?.inputHash ?? null,
       codeHash: codeHash(),
-      audio: Object.fromEntries(Object.entries(props.audio ?? {}).map(([f, t]) => [f, t!.status])),
+      audio: Object.fromEntries(formats.map((f) => [f, props[f]!.audio?.[f]?.status ?? "silent"])),
+      durations: Object.fromEntries(formats.map((f) => {
+        const tl = props[f]!.timelines![f]!;
+        const seconds = Math.round((tl.totalFrames / tl.fps) * 100) / 100;
+        return [f, { ...ctx.settings.formats[f], seconds, verdict: checkDuration(seconds, ctx.settings, f).verdict }];
+      })),
     };
     writeJson(join(dir, "candidate.json"), cand);
     updateState(ctx.slug, (s) => {
       s.candidates.push(cand);
     });
     pruneCandidates(ctx.slug);
-    return { summary: `candidate ${id}: ${ctx.formats.join(" + ")}${ctx.preview ? " (preview)" : ""}, audio ${Object.values(cand.audio).join("/") || "silent"}`, cached: false };
+    return { summary: `candidate ${id}: ${formats.join(" + ")}${ctx.preview ? " (preview)" : ""}, audio ${Object.values(cand.audio).join("/") || "silent"}`, cached: false };
   } finally {
     release();
   }
 }
 
 /** Renders only the frame ranges of selected shots, for fast targeted iteration. */
-async function renderShotPreviews(ctx: RunCtx, props: RenderProps): Promise<StageResult> {
+async function renderShotPreviews(ctx: RunCtx, props: Partial<Record<Format, RenderProps>>): Promise<StageResult> {
   const dir = join(paths.work(ctx.slug), "shot-previews");
   mkdirSync(dir, { recursive: true });
-  const propsPath = join(dir, "props.json");
-  writeJson(propsPath, props);
   const done: string[] = [];
   for (const format of ctx.formats) {
-    const tl = props.timelines![format]!;
+    const p = props[format];
+    if (!p) continue;
+    const propsPath = join(dir, `props-${format}.json`);
+    writeJson(propsPath, p);
+    const tl = p.timelines![format]!;
     for (const id of ctx.shots!) {
       const t = tl.shots.find((s) => s.id === id);
       if (!t) continue;

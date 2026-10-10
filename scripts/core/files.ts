@@ -2,24 +2,35 @@
 // destructive changes, content hashes for staleness, and process locks.
 import { createHash } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync, openSync, closeSync } from "node:fs";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+/** The code: prompts, renderer, assets manifest. */
 export const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../..");
+/** The data: backlog, specs, settings, outputs. Same as ROOT unless DATA_ROOT is set (tests use a temp dir). */
+export const DATA = process.env.DATA_ROOT ? resolve(process.env.DATA_ROOT) : ROOT;
 
 export const paths = {
-  backlog: join(ROOT, "topics/backlog.json"),
-  spec: (slug: string) => join(ROOT, "specs", `${slug}.json`),
-  sources: (slug: string) => join(ROOT, "specs", `${slug}.sources.json`),
-  work: (slug: string) => join(ROOT, "out", slug),
-  state: (slug: string) => join(ROOT, "out", slug, "state.json"),
-  audio: (slug: string) => join(ROOT, "out", slug, "audio"),
-  candidates: (slug: string) => join(ROOT, "out", slug, "candidates"),
-  candidate: (slug: string, id: string) => join(ROOT, "out", slug, "candidates", id),
-  archive: (slug: string) => join(ROOT, "out", slug, "archive"),
+  backlog: join(DATA, "topics/backlog.json"),
+  settings: join(DATA, "config/settings.json"),
+  /** The landscape storyboard (also the single storyboard of videos made before formats were split). */
+  spec: (slug: string) => join(DATA, "specs", `${slug}.json`),
+  /** The independently written Short storyboard. */
+  shortSpec: (slug: string) => join(DATA, "specs", `${slug}.short.json`),
+  specFor: (slug: string, format: "main" | "short") => join(DATA, "specs", format === "short" ? `${slug}.short.json` : `${slug}.json`),
+  sources: (slug: string) => join(DATA, "specs", `${slug}.sources.json`),
+  research: (slug: string) => join(DATA, "specs", `${slug}.research.json`),
+  outline: (slug: string) => join(DATA, "specs", `${slug}.outline.json`),
+  review: (slug: string) => join(DATA, "specs", `${slug}.review.json`),
+  work: (slug: string) => join(DATA, "out", slug),
+  state: (slug: string) => join(DATA, "out", slug, "state.json"),
+  audio: (slug: string) => join(DATA, "out", slug, "audio"),
+  candidates: (slug: string) => join(DATA, "out", slug, "candidates"),
+  candidate: (slug: string, id: string) => join(DATA, "out", slug, "candidates", id),
+  archive: (slug: string) => join(DATA, "out", slug, "archive"),
   publicGen: (slug: string) => join(ROOT, "public", "generated", slug),
   assetsManifest: join(ROOT, "assets/manifest.json"),
-  renderLock: join(ROOT, "out", ".render.lock"),
+  renderLock: join(DATA, "out", ".render.lock"),
 };
 
 export function readJson<T>(path: string, fallback: T): T {
@@ -113,9 +124,17 @@ export function lock(path: string, label: string): () => void {
   throw new PipelineError(`Could not take lock ${path}`, "busy");
 }
 
+/**
+ * What went wrong, for the admin panel. Content failures are split by cause:
+ * "editorial" (the explanation doesn't teach well enough), "factcheck" (claims
+ * not verified), "duration" (measured media outside the configured range),
+ * "config" (invalid settings); "quality" is rendered-media QA.
+ */
+export type ErrorKind = "busy" | "invalid" | "missing" | "external" | "quality" | "editorial" | "factcheck" | "duration" | "config" | "cancelled" | "failed";
+
 /** An error with a category the admin panel can show and act on. */
 export class PipelineError extends Error {
-  constructor(message: string, public kind: "busy" | "invalid" | "missing" | "external" | "quality" | "cancelled" | "failed" = "failed", public hint?: string) {
+  constructor(message: string, public kind: ErrorKind = "failed", public hint?: string) {
     super(message);
   }
 }

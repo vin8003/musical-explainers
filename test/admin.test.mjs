@@ -25,7 +25,7 @@ after(() => proc.kill());
 
 test("meta exposes stages and visual systems", async () => {
   const m = await (await fetch(url("/api/meta"))).json();
-  assert.deepEqual(m.stages, ["script", "factcheck", "direct", "assets", "audio", "render", "qa", "package"]);
+  assert.deepEqual(m.stages, ["research", "outline", "script", "review", "factcheck", "direct", "assets", "audio", "render", "qa", "package"]);
   assert.ok("network" in m.visuals);
 });
 

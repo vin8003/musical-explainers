@@ -1,12 +1,15 @@
 // Packaging: thumbnail still from the same components, plus YouTube metadata
 // (title, description with sources and credits, chapters from the real
 // timeline, tags, and the disclosure flags to set deliberately on upload).
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type { Timeline } from "../../src/schema/timeline.mjs";
 import { paths, PipelineError, readJson, writeJson } from "../core/files";
 import { loadAudioManifest } from "./audio";
+import { loadResearch } from "./editorial";
 import { latestCandidate, remotion } from "./render";
-import { loadSpec } from "./text";
+import { loadSpec, sourceUrl } from "./text";
+import type { Sources } from "./text";
 import type { RunCtx, StageResult } from "./types";
 
 const ts = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
@@ -16,7 +19,8 @@ export async function packageStage(ctx: RunCtx): Promise<StageResult> {
   const cand = latestCandidate(ctx.slug);
   if (!spec || !cand) throw new PipelineError("Render a candidate first", "missing");
   const dir = join(paths.candidate(ctx.slug, cand.id), "package");
-  const props = join(paths.candidate(ctx.slug, cand.id), "props.json");
+  const dir0 = paths.candidate(ctx.slug, cand.id);
+  const props = existsSync(join(dir0, "props-main.json")) ? join(dir0, "props-main.json") : join(dir0, "props.json");
   await remotion(["still", "src/index.ts", "Thumbnail", join(dir, "thumbnail.png"), `--props=${props}`], "thumbnail");
 
   const tl = readJson<{ timelines?: { main?: Timeline } }>(props, {}).timelines?.main;
@@ -32,8 +36,12 @@ export async function packageStage(ctx: RunCtx): Promise<StageResult> {
       lastAt = at;
     }
   }
-  const sources = readJson<{ claims?: { sources?: string[] }[] }>(paths.sources(ctx.slug), {}).claims ?? [];
-  const urls = [...new Set(sources.flatMap((c) => c.sources ?? []))].slice(0, 15);
+  // Sources: the research dossier's fetched sources for claims the video states, then the fact-check's.
+  const research = loadResearch(ctx.slug);
+  const stated = new Set([...(spec.shots ?? []), ...(loadSpec(ctx.slug, "short")?.shots ?? [])].flatMap((s) => s.claims ?? []));
+  const fromResearch = (research?.claims ?? []).filter((c) => stated.has(c.id)).flatMap((c) => c.sources.filter((s) => s.accessed === "fetched").map((s) => s.url));
+  const sources = readJson<Sources>(paths.sources(ctx.slug), { claims: [] }).claims ?? [];
+  const urls = [...new Set([...fromResearch, ...sources.flatMap((c) => (c.sources ?? []).map(sourceUrl))])].slice(0, 20);
   const audio = loadAudioManifest(ctx.slug);
   const description = [
     spec.brief?.learningGoal ?? spec.title,
@@ -54,6 +62,7 @@ export async function packageStage(ctx: RunCtx): Promise<StageResult> {
       containsSyntheticMedia: null,
       note: "Set madeForKids and the altered/synthetic content disclosure deliberately at upload time; they are left null on purpose.",
     },
+    durations: cand.durations ?? null,
     audio: audio ? Object.fromEntries(Object.entries(audio.formats).map(([f, t]) => [f, t!.status])) : null,
   };
   writeJson(join(dir, "metadata.json"), meta);
