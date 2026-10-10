@@ -30,7 +30,7 @@ claude -p "$(cat prompts/script.md) Topic: ..." --output-format json --model son
 claude -p "$(cat prompts/factcheck.md)" --allowedTools WebSearch,WebFetch --output-format json
 ```
 
-`scripts/claude.ts` wraps this (stdin prompt, JSON result, retry once on invalid output). Do not set `ANTHROPIC_API_KEY`: if it is set, the CLI may bill the API instead of the subscription. Interactive alternative: run the same prompts as slash commands or skills inside a normal Claude Code session in this repo. Heavy batches count against subscription usage limits, so queue a few videos at a time rather than a large batch.
+`scripts/claude.ts` wraps this (stdin prompt, JSON result, retry once on invalid output). The CLI must be installed and logged in once (`claude`, then `/login`). The Claude desktop app bundles a binary that is not on PATH; point `CLAUDE_BIN` at a real install instead. Do not set `ANTHROPIC_API_KEY`: if it is set, the CLI may bill the API instead of the subscription. Interactive alternative: run the same prompts as slash commands or skills inside a normal Claude Code session in this repo. Heavy batches count against subscription usage limits, so queue a few videos at a time rather than a large batch.
 
 ## 1. Topic selection
 

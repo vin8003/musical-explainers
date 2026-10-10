@@ -3,13 +3,51 @@
   "title": "How does the internet work?",
   "bpm": 120,
   "scenes": [
-    { "kind": "hook", "text": "Your cat video took an undersea cable!", "caption": "And it got here in under a second.", "durationBeats": 8 },
-    { "kind": "beat", "text": "Chop it into packets", "caption": "Big files are split into thousands of tiny pieces.", "durationBeats": 8 },
-    { "kind": "beat", "text": "Every packet has an address", "caption": "IP addresses tell routers where each piece is going.", "durationBeats": 8 },
-    { "kind": "chorus", "text": "Packets on the move, hop hop hop!", "durationBeats": 8 },
-    { "kind": "beat", "text": "Routers pass them along", "caption": "Each router sends a packet one hop closer.", "durationBeats": 8 },
-    { "kind": "beat", "text": "Rebuild it at the end", "caption": "Your device puts the pieces back in order.", "durationBeats": 8 },
-    { "kind": "chorus", "text": "Packets on the move, hop hop hop!", "durationBeats": 8 },
-    { "kind": "recap", "text": "Split, address, hop, rebuild!", "caption": "That's the internet.", "durationBeats": 8 }
+    {
+      "kind": "hook",
+      "text": "Your cat video took an undersea cable!",
+      "caption": "And it got here in under a second.",
+      "durationBeats": 8
+    },
+    {
+      "kind": "beat",
+      "text": "Chop it into packets",
+      "caption": "Big files are split into thousands of tiny pieces.",
+      "durationBeats": 8
+    },
+    {
+      "kind": "beat",
+      "text": "Every packet has an address",
+      "caption": "IP addresses tell routers where each piece is going.",
+      "durationBeats": 8
+    },
+    {
+      "kind": "chorus",
+      "text": "Packets on the move, hop hop hop!",
+      "durationBeats": 8
+    },
+    {
+      "kind": "beat",
+      "text": "Routers pass them along",
+      "caption": "Each router sends a packet one hop closer.",
+      "durationBeats": 8
+    },
+    {
+      "kind": "beat",
+      "text": "Rebuild it at the end",
+      "caption": "Your device puts the pieces back in order.",
+      "durationBeats": 8
+    },
+    {
+      "kind": "chorus",
+      "text": "Packets on the move, hop hop hop!",
+      "durationBeats": 8
+    },
+    {
+      "kind": "recap",
+      "text": "Split, address, hop, rebuild!",
+      "caption": "That's the internet.",
+      "durationBeats": 8
+    }
   ]
 }

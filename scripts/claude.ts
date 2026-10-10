@@ -12,13 +12,20 @@ export function claudeText(prompt: string, opts: ClaudeOptions = {}): string {
   // A set API key can make the CLI bill the API instead of the subscription.
   const env = { ...process.env };
   delete env.ANTHROPIC_API_KEY;
+  // When launched from inside another Claude Code session, drop its session
+  // variables so this run uses your own CLI login.
+  for (const key of Object.keys(env)) {
+    if (key.startsWith("CLAUDE_CODE_") || key.startsWith("CLAUDE_AGENT_") || key === "CLAUDECODE" || key === "ANTHROPIC_BASE_URL") {
+      delete env[key];
+    }
+  }
 
   const args = ["-p", "--output-format", "json"];
   if (opts.model) args.push("--model", opts.model);
   if (opts.allowedTools?.length) args.push("--allowedTools", opts.allowedTools.join(","));
 
-  const res = spawnSync("claude", args, { input: prompt, encoding: "utf8", env, maxBuffer: 64 * 1024 * 1024 });
-  if (res.error) throw new Error(`Could not run the claude CLI (is it installed and logged in?): ${res.error.message}`);
+  const res = spawnSync(process.env.CLAUDE_BIN ?? "claude", args, { input: prompt, encoding: "utf8", env, maxBuffer: 64 * 1024 * 1024 });
+  if (res.error) throw new Error(`Could not run the claude CLI (is it on PATH, or set CLAUDE_BIN, and run claude once to log in?): ${res.error.message}`);
   if (res.status !== 0) throw new Error(`claude -p failed (${res.status}): ${res.stderr}`);
   const out = JSON.parse(res.stdout) as { result?: string; is_error?: boolean };
   if (out.is_error || typeof out.result !== "string") throw new Error(`claude -p returned an error: ${res.stdout}`);
