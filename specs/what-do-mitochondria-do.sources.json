@@ -1,0 +1,60 @@
+{
+  "claims": [
+    {
+      "claim": "Inside almost every cell in your body are structures called mitochondria that generate energy.",
+      "verdict": "ok",
+      "sources": [
+        "https://uen.pressbooks.pub/anatomyphysiology/chapter/mitochondria-the-energy-production-organelle/",
+        "https://www.nature.com/scitable/topicpage/the-origin-of-mitochondria-14232356/"
+      ]
+    },
+    {
+      "claim": "Mitochondria convert nutrients and oxygen into ATP, the molecule cells use to power their activities.",
+      "verdict": "ok",
+      "sources": [
+        "https://uen.pressbooks.pub/anatomyphysiology/chapter/mitochondria-the-energy-production-organelle/",
+        "https://byjus.com/biology/energy-currency-of-the-cell/"
+      ]
+    },
+    {
+      "claim": "Heart and muscle cells contain thousands of mitochondria because they demand so much energy.",
+      "verdict": "ok",
+      "sources": [
+        "https://pmc.ncbi.nlm.nih.gov/articles/PMC2862702/",
+        "https://www.frontiersin.org/journals/cell-and-developmental-biology/articles/10.3389/fcell.2020.584800/full",
+        "https://scienceinsights.org/why-does-cardiac-muscle-tissue-have-so-many-mitochondria/"
+      ]
+    },
+    {
+      "claim": "Mitochondria generate the energy that keeps your cells running.",
+      "verdict": "ok",
+      "sources": [
+        "https://uen.pressbooks.pub/anatomyphysiology/chapter/mitochondria-the-energy-production-organelle/"
+      ]
+    },
+    {
+      "claim": "Mitochondria have their own small set of DNA, separate from the DNA stored in the cell's nucleus.",
+      "verdict": "ok",
+      "sources": [
+        "https://en.wikipedia.org/wiki/Mitochondrial_DNA",
+        "https://geneticeducation.co.in/mitochondrial-dna-vs-nuclear-dna/"
+      ]
+    },
+    {
+      "claim": "Scientists believe mitochondria descend from ancient bacteria engulfed by early cells over a billion years ago.",
+      "verdict": "ok",
+      "sources": [
+        "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5373507/",
+        "https://www.nature.com/scitable/topicpage/the-origin-of-mitochondria-14232356/"
+      ]
+    },
+    {
+      "claim": "Mitochondria convert food and oxygen into the energy that powers nearly everything your cells do.",
+      "verdict": "ok",
+      "sources": [
+        "https://uen.pressbooks.pub/anatomyphysiology/chapter/mitochondria-the-energy-production-organelle/",
+        "https://byjus.com/biology/energy-currency-of-the-cell/"
+      ]
+    }
+  ]
+}

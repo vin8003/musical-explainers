@@ -43,16 +43,42 @@ async function writeScript(title: string, topic?: BacklogTopic): Promise<VideoSp
 }
 
 // Stage 3: fact-check with a second, independent `claude -p` run (web search).
-// Writes specs/<slug>.sources.json and stops if any claim needs a fix or cut.
-async function factCheck(spec: VideoSpec): Promise<void> {
+type Claim = { claim: string; verdict: string; correction?: string; sources?: string[] };
+
+async function checkClaims(spec: VideoSpec): Promise<Claim[]> {
   const prompt = `${readFileSync(join(ROOT, "prompts/factcheck.md"), "utf8")}\n\n${JSON.stringify(spec)}`;
-  const result = claudeJson<{ claims: { claim: string; verdict: string }[] }>(prompt, {
-    allowedTools: ["WebSearch", "WebFetch"],
-  });
+  const result = claudeJson<{ claims: Claim[] }>(prompt, { allowedTools: ["WebSearch", "WebFetch"] });
   writeFileSync(join(ROOT, "specs", `${spec.slug}.sources.json`), JSON.stringify(result, null, 2) + "\n");
-  const bad = result.claims.filter((c) => c.verdict !== "ok");
-  if (bad.length) {
-    throw new Error(`Fact-check flagged ${bad.length} claim(s); see specs/${spec.slug}.sources.json`);
+  return result.claims;
+}
+
+// Rewrites only the flagged claims, keeping structure, timing and style.
+async function reviseSpec(spec: VideoSpec, flagged: Claim[]): Promise<VideoSpec> {
+  const prompt = `${readFileSync(join(ROOT, "prompts/revise.md"), "utf8")}\n\nFlagged claims:\n${JSON.stringify(flagged, null, 2)}\n\nVideoSpec:\n${JSON.stringify(spec)}`;
+  const revised = claudeJson<VideoSpec>(prompt);
+  if (!revised.scenes?.length || revised.scenes.length !== spec.scenes.length) {
+    throw new Error("Revision changed the scene count or returned an incomplete spec");
+  }
+  return { ...revised, slug: spec.slug };
+}
+
+// Check, revise flagged claims, re-check: up to MAX_REVISIONS rounds.
+const MAX_REVISIONS = 2;
+async function factCheckLoop(spec: VideoSpec, save: (s: VideoSpec) => void): Promise<VideoSpec> {
+  for (let round = 0; ; round++) {
+    const flagged = (await checkClaims(spec)).filter((c) => c.verdict !== "ok");
+    if (!flagged.length) {
+      console.log(round ? `  fact-check passed after ${round} revision(s)` : "  fact-check passed");
+      return spec;
+    }
+    console.log(`  fact-check flagged ${flagged.length} claim(s):`);
+    for (const c of flagged) console.log(`    - [${c.verdict}] ${c.claim}`);
+    if (round >= MAX_REVISIONS) {
+      throw new Error(`Still ${flagged.length} flagged claim(s) after ${MAX_REVISIONS} revisions; see specs/${spec.slug}.sources.json`);
+    }
+    console.log(`  revising (round ${round + 1}/${MAX_REVISIONS})`);
+    spec = await reviseSpec(spec, flagged);
+    save(spec);
   }
 }
 
@@ -90,9 +116,11 @@ async function main() {
     spec = await writeScript(title, topic);
   }
 
-  if (!args.includes("--skip-factcheck")) await factCheck(spec);
+  const save = (s: VideoSpec) => writeFileSync(join(ROOT, specPath), JSON.stringify(s, null, 2) + "\n");
+  save(spec); // keep the draft even if a later stage fails
+  if (!args.includes("--skip-factcheck")) spec = await factCheckLoop(spec, save);
   spec = await getAudioProvider().addAudio(spec);
-  writeFileSync(join(ROOT, specPath), JSON.stringify(spec, null, 2) + "\n");
+  save(spec);
   console.log(`Spec saved to ${specPath}`);
 
   if (doRender) render(specPath, slug);
