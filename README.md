@@ -32,6 +32,8 @@ npm run generate -- "How does the internet work?"   # topic -> specs/<slug>.json
 npm run generate -- "How does the internet work?" --render   # ...and render out/<slug>.mp4
 ```
 
+Requires Node 18 or newer. If you see an esbuild "installed for another platform" error, `node_modules` was installed under a different CPU architecture (e.g. Rosetta vs native Apple Silicon). Fix: `rm -rf node_modules package-lock.json && npm install` from a terminal where `node -p process.arch` prints `arm64`. Don't mix an x64 and an arm64 Node on the same checkout.
+
 ## The pipeline
 
 ```

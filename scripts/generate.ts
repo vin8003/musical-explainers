@@ -7,12 +7,13 @@
 // Music/voice go through a swappable provider that defaults to a free stub.
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { VideoSpec } from "../src/types";
 import { claudeJson } from "./claude";
 import { getAudioProvider } from "./providers";
 
-const ROOT = join(import.meta.dirname, "..");
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 const slugify = (s: string) =>
   s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
