@@ -222,5 +222,8 @@ __marimo__/
 # Node / Remotion
 node_modules/
 out/
-assets/
+# Generated audio and per-video render inputs (rebuilt by the pipeline)
+public/generated/
+# Pipeline state is local (renders, logs, approvals live under out/)
+
 .remotion/

@@ -1,26 +1,24 @@
-// A VideoSpec is everything one video needs. Stage 2 (script) writes it,
-// stages 4-5 (music, narration) add timing, and Explainer renders it.
+// Shared types. The storyboard itself (VideoSpec v2) is defined next to its
+// validator in schema/storyboard.mjs so the admin server can use it too.
+import type { VideoSpec } from "./schema/storyboard.mjs";
+import type { Format, Timeline } from "./schema/timeline.mjs";
 
-export type SceneKind = "hook" | "beat" | "chorus" | "recap";
+export type { Shot, Visual, VideoSpec } from "./schema/storyboard.mjs";
+export type { Format, Timeline, TimedShot } from "./schema/timeline.mjs";
 
-export type Scene = {
-  kind: SceneKind;
-  /** Big on-screen phrase. Keep it short: it pops in on the beat. */
-  text: string;
-  /** Smaller supporting line (narration excerpt or caption). */
-  caption?: string;
-  /** Length in musical beats, so cuts always land on the beat. */
-  durationBeats: number;
+/** Audio for one cut. status says honestly what the mix contains. */
+export type AudioTrack = {
+  /** Path under public/. */
+  src: string | null;
+  status: "full" | "partial" | "silent";
+  has: { music: boolean; narration: boolean; vocals: boolean; sfx: boolean };
 };
 
-export type VideoSpec = {
-  slug: string;
-  title: string;
-  /** Tempo of the generated song; drives every cut, zoom and flash. */
-  bpm: number;
-  /** Milliseconds from audio start to the first downbeat. */
-  beatOffsetMs?: number;
-  /** Path under public/ for the song, once stage 4 has produced it. */
-  songSrc?: string;
-  scenes: Scene[];
+/** What the render stage passes to Remotion (--props). */
+export type RenderProps = {
+  spec: VideoSpec;
+  timelines?: Partial<Record<Format, Timeline>>;
+  audio?: Partial<Record<Format, AudioTrack>>;
+  /** Pre-rendered 3D clips by shot id and cut (paths under public/). */
+  clips?: Record<string, Partial<Record<Format, { src: string; seconds: number }>>>;
 };

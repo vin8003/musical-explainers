@@ -1,0 +1,5 @@
+{
+  "version": 1,
+  "notes": "External assets (files under public/). Built-in icons in src/assets/icons.tsx need no entry. Every entry needs a licence and a source; the asset stage refuses entries without them.",
+  "assets": []
+}
