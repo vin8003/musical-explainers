@@ -6,9 +6,11 @@
   "type": "module",
   "scripts": {
     "studio": "remotion studio src/index.ts",
-    "render": "remotion render src/index.ts Explainer out/video.mp4",
+    "pipeline": "tsx scripts/pipeline.ts",
     "generate": "tsx scripts/generate.ts",
+    "render": "remotion render src/index.ts Explainer out/video.mp4",
     "typecheck": "tsc --noEmit",
+    "test": "node --test test/",
     "admin": "node admin/server.mjs"
   },
   "dependencies": {

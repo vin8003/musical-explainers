@@ -1,5 +1,7 @@
-You are editing a VideoSpec for a musical explainer video after a fact-check.
+You are editing a video storyboard (VideoSpec v2 JSON) after a fact-check.
 
-Rewrite ONLY the scenes whose text or caption contain the flagged claims, applying each correction (for example, say "almost every cell" instead of "every cell"). Keep every scene's kind and durationBeats, keep the same number of scenes in the same order, keep the style catchy, and keep chorus lines singable and consistent wherever the chorus repeats. Also fix the same issue anywhere else it appears, even if not listed.
+Rewrite ONLY the text that contains the flagged claims, applying each correction (for example, "almost every cell" instead of "every cell"). Text can live in a shot's narration, lyric, headline, or inside its visual (labels, titles, callouts, stops, steps, events, points). Also fix the same issue anywhere else it appears, even if not listed.
+
+Do not change ids, sections, visual types, layout coordinates, timing or anything else. Keep the style catchy, keep narration within 34 words per shot, and keep the chorus lyric identical wherever it repeats.
 
 Return ONLY the full corrected VideoSpec JSON, no prose, no code fences.

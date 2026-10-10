@@ -1,53 +1,654 @@
 {
+  "schemaVersion": 2,
   "slug": "how-does-the-internet-work",
-  "title": "How does the internet work?",
-  "bpm": 120,
-  "scenes": [
+  "title": "How Does the Internet Work?",
+  "brief": {
+    "audience": "curious kids and adults who use the internet daily but have never wondered what actually happens when they hit send",
+    "learningGoal": "After watching, the viewer can explain that the internet works by splitting data into addressed packets that hop router to router until they are reassembled at the destination.",
+    "hook": "Your cat video just crossed an ocean through a cable on the seafloor in under a second — how did it get there?"
+  },
+  "world": "night",
+  "direction": {
+    "status": "directed",
+    "at": "2026-10-10T14:19:18.738Z",
+    "by": "claude"
+  },
+  "music": {
+    "bpm": 112,
+    "key": "G",
+    "mode": "major",
+    "mood": "driving"
+  },
+  "shots": [
     {
-      "kind": "hook",
-      "text": "Your cat video took an undersea cable!",
-      "caption": "And it got here in under a second.",
-      "durationBeats": 8
+      "id": "intro-ocean-cable",
+      "section": "intro",
+      "purpose": "hook with a surprising concrete image",
+      "narration": "Right now, your cat video is zipping through a cable on the ocean floor, crossing an entire ocean in under a second.",
+      "short": true,
+      "visual": {
+        "type": "journey",
+        "stops": [
+          {
+            "scene": "coast",
+            "label": "Coast"
+          },
+          {
+            "scene": "ocean",
+            "label": "Open Ocean"
+          },
+          {
+            "scene": "seafloor",
+            "label": "Seafloor Cable"
+          }
+        ],
+        "traveller": {
+          "icon": "video"
+        },
+        "stat": {
+          "label": "Crossing time",
+          "value": "<1 second"
+        }
+      },
+      "headline": "Across an Ocean, Instantly",
+      "camera": {
+        "move": "drift"
+      },
+      "accents": [
+        {
+          "beat": 0,
+          "sfx": "whoosh"
+        }
+      ],
+      "minBars": 2
     },
     {
-      "kind": "beat",
-      "text": "Chop it into packets",
-      "caption": "Big files are split into thousands of tiny pieces.",
-      "durationBeats": 8
+      "id": "chopped-into-packets",
+      "section": "verse",
+      "purpose": "introduce that data is split into packets",
+      "narration": "Before it leaves your phone, that video gets chopped into thousands of tiny pieces called packets.",
+      "short": true,
+      "visual": {
+        "type": "packetize",
+        "mode": "split",
+        "source": {
+          "icon": "video",
+          "label": "Cat Video"
+        },
+        "count": 8,
+        "packetLabel": "none"
+      },
+      "headline": "Chopped Into Packets",
+      "camera": {
+        "move": "push-in"
+      },
+      "accents": [
+        {
+          "beat": 0,
+          "sfx": "pop"
+        },
+        {
+          "beat": 2,
+          "sfx": "pop"
+        }
+      ]
     },
     {
-      "kind": "beat",
-      "text": "Every packet has an address",
-      "caption": "IP addresses tell routers where each piece is going.",
-      "durationBeats": 8
+      "id": "packet-address",
+      "section": "verse",
+      "purpose": "each packet carries a destination address",
+      "narration": "Each packet carries its own address label, like a postcard, so it knows exactly where it's headed.",
+      "short": true,
+      "visual": {
+        "type": "anatomy",
+        "subject": "packet",
+        "label": "Packet",
+        "callouts": [
+          {
+            "label": "From: 192.0.2.10",
+            "anchor": "from-address"
+          },
+          {
+            "label": "To: 203.0.113.5",
+            "anchor": "to-address"
+          },
+          {
+            "label": "Video data",
+            "anchor": "payload"
+          }
+        ]
+      },
+      "headline": "Every Packet Has an Address",
+      "camera": {
+        "move": "static"
+      },
+      "accents": [
+        {
+          "beat": 0,
+          "sfx": "chime"
+        }
+      ]
     },
     {
-      "kind": "chorus",
-      "text": "Packets on the move, hop hop hop!",
-      "durationBeats": 8
+      "id": "routers-hop",
+      "section": "verse",
+      "purpose": "routers pass packets along hop by hop",
+      "narration": "Machines called routers read that address and pass each packet to the next router, one hop at a time, like a relay race.",
+      "short": true,
+      "visual": {
+        "type": "network",
+        "nodes": [
+          {
+            "id": "phone",
+            "icon": "phone",
+            "label": "You",
+            "x": 8,
+            "y": 50
+          },
+          {
+            "id": "r1",
+            "icon": "router",
+            "label": "Router",
+            "x": 30,
+            "y": 50
+          },
+          {
+            "id": "r2",
+            "icon": "router",
+            "label": "Router",
+            "x": 54,
+            "y": 50
+          },
+          {
+            "id": "r3",
+            "icon": "router",
+            "label": "Router",
+            "x": 78,
+            "y": 50
+          }
+        ],
+        "links": [
+          {
+            "from": "phone",
+            "to": "r1",
+            "style": "cable"
+          },
+          {
+            "from": "r1",
+            "to": "r2",
+            "style": "cable"
+          },
+          {
+            "from": "r2",
+            "to": "r3",
+            "style": "cable"
+          }
+        ],
+        "packets": [
+          {
+            "route": [
+              "phone",
+              "r1",
+              "r2",
+              "r3"
+            ],
+            "label": "packet",
+            "color": "primary",
+            "startBeat": 0,
+            "beatsPerHop": 2
+          }
+        ]
+      },
+      "headline": "Routers Pass It Along",
+      "camera": {
+        "move": "pan-right"
+      },
+      "accents": [
+        {
+          "beat": 0,
+          "sfx": "blip"
+        },
+        {
+          "beat": 6,
+          "sfx": "blip"
+        }
+      ],
+      "minBars": 2
     },
     {
-      "kind": "beat",
-      "text": "Routers pass them along",
-      "caption": "Each router sends a packet one hop closer.",
-      "durationBeats": 8
+      "id": "chorus-hop-1",
+      "section": "chorus",
+      "purpose": "state the key idea in a singable line",
+      "lyric": "Packets on the move, hop hop hop!",
+      "short": true,
+      "visual": {
+        "type": "kinetic",
+        "style": "punch",
+        "emphasis": [
+          "hop",
+          "hop",
+          "hop"
+        ]
+      },
+      "camera": {
+        "move": "push-in"
+      },
+      "mascot": {
+        "mood": "happy",
+        "position": "right"
+      },
+      "accents": [
+        {
+          "beat": 0,
+          "sfx": "hit"
+        },
+        {
+          "beat": 2,
+          "sfx": "hit"
+        },
+        {
+          "beat": 3,
+          "sfx": "hit"
+        }
+      ]
     },
     {
-      "kind": "beat",
-      "text": "Rebuild it at the end",
-      "caption": "Your device puts the pieces back in order.",
-      "durationBeats": 8
+      "id": "different-paths",
+      "section": "verse",
+      "purpose": "packets can take different routes to the same place",
+      "narration": "Packets from the same video don't all take the same route — each hop picks whichever path looks fastest and least busy at that moment.",
+      "visual": {
+        "type": "network",
+        "nodes": [
+          {
+            "id": "src",
+            "icon": "phone",
+            "label": "Video",
+            "x": 10,
+            "y": 50
+          },
+          {
+            "id": "route-a-1",
+            "icon": "router",
+            "label": "Route A",
+            "x": 38,
+            "y": 25
+          },
+          {
+            "id": "route-b-1",
+            "icon": "router",
+            "label": "Route B",
+            "x": 38,
+            "y": 75
+          },
+          {
+            "id": "route-a-2",
+            "icon": "router",
+            "label": "Route A",
+            "x": 64,
+            "y": 25
+          },
+          {
+            "id": "route-b-2",
+            "icon": "router",
+            "label": "Route B",
+            "x": 64,
+            "y": 75
+          },
+          {
+            "id": "dst",
+            "icon": "server",
+            "label": "Destination",
+            "x": 90,
+            "y": 50
+          }
+        ],
+        "links": [
+          {
+            "from": "src",
+            "to": "route-a-1",
+            "style": "cable"
+          },
+          {
+            "from": "src",
+            "to": "route-b-1",
+            "style": "cable"
+          },
+          {
+            "from": "route-a-1",
+            "to": "route-a-2",
+            "style": "cable"
+          },
+          {
+            "from": "route-b-1",
+            "to": "route-b-2",
+            "style": "cable"
+          },
+          {
+            "from": "route-a-2",
+            "to": "dst",
+            "style": "cable"
+          },
+          {
+            "from": "route-b-2",
+            "to": "dst",
+            "style": "cable"
+          }
+        ],
+        "packets": [
+          {
+            "route": [
+              "src",
+              "route-a-1",
+              "route-a-2",
+              "dst"
+            ],
+            "label": "packet 1",
+            "color": "primary",
+            "startBeat": 0,
+            "beatsPerHop": 2
+          },
+          {
+            "route": [
+              "src",
+              "route-b-1",
+              "route-b-2",
+              "dst"
+            ],
+            "label": "packet 2",
+            "color": "secondary",
+            "startBeat": 0,
+            "beatsPerHop": 2
+          }
+        ]
+      },
+      "headline": "Different Paths, Same Trip",
+      "camera": {
+        "move": "pull-out"
+      },
+      "minBars": 2
     },
     {
-      "kind": "chorus",
-      "text": "Packets on the move, hop hop hop!",
-      "durationBeats": 8
+      "id": "undersea-light",
+      "section": "verse",
+      "purpose": "explain the physical medium: fiber optic cables",
+      "narration": "Between continents, those hops often travel as pulses of light, flashing down fiber optic cables laid across the seafloor at about two-thirds the speed of light.",
+      "visual": {
+        "type": "anatomy",
+        "subject": "cable",
+        "label": "Fiber Optic Cable",
+        "callouts": [
+          {
+            "label": "Pulses of light",
+            "x": 0.5,
+            "y": 0.25
+          },
+          {
+            "label": "~2/3 light speed",
+            "x": 0.5,
+            "y": 0.55
+          },
+          {
+            "label": "Across the seafloor",
+            "x": 0.5,
+            "y": 0.85
+          }
+        ]
+      },
+      "headline": "Light Under the Sea",
+      "camera": {
+        "move": "push-in"
+      },
+      "mascot": {
+        "mood": "wow",
+        "position": "left"
+      },
+      "accents": [
+        {
+          "beat": 0,
+          "sfx": "whoosh"
+        }
+      ]
     },
     {
-      "kind": "recap",
-      "text": "Split, address, hop, rebuild!",
-      "caption": "That's the internet.",
-      "durationBeats": 8
+      "id": "chorus-hop-2",
+      "section": "chorus",
+      "purpose": "repeat the key idea",
+      "lyric": "Packets on the move, hop hop hop!",
+      "visual": {
+        "type": "kinetic",
+        "style": "stack",
+        "emphasis": [
+          "hop"
+        ]
+      },
+      "accents": [
+        {
+          "beat": 0,
+          "sfx": "hit"
+        }
+      ]
+    },
+    {
+      "id": "bridge-out-of-order",
+      "section": "bridge",
+      "purpose": "twist: packets can arrive out of order or go missing",
+      "narration": "Here's the catch: packets can arrive out of order, or a few might get lost along the way.",
+      "visual": {
+        "type": "network",
+        "nodes": [
+          {
+            "id": "r1",
+            "icon": "router",
+            "label": "Router",
+            "x": 12,
+            "y": 50
+          },
+          {
+            "id": "r2",
+            "icon": "router",
+            "label": "Router",
+            "x": 42,
+            "y": 25
+          },
+          {
+            "id": "r3",
+            "icon": "router",
+            "label": "Router",
+            "x": 42,
+            "y": 75
+          },
+          {
+            "id": "dst",
+            "icon": "phone",
+            "label": "Your Phone",
+            "x": 85,
+            "y": 50
+          }
+        ],
+        "links": [
+          {
+            "from": "r1",
+            "to": "r2",
+            "style": "cable"
+          },
+          {
+            "from": "r1",
+            "to": "r3",
+            "style": "cable"
+          },
+          {
+            "from": "r2",
+            "to": "dst",
+            "style": "cable"
+          },
+          {
+            "from": "r3",
+            "to": "dst",
+            "style": "cable"
+          }
+        ],
+        "packets": [
+          {
+            "route": [
+              "r1",
+              "r2",
+              "dst"
+            ],
+            "label": "3",
+            "color": "primary",
+            "startBeat": 0,
+            "beatsPerHop": 2
+          },
+          {
+            "route": [
+              "r1",
+              "r3",
+              "dst"
+            ],
+            "label": "1",
+            "color": "secondary",
+            "startBeat": 1,
+            "beatsPerHop": 2
+          },
+          {
+            "route": [
+              "r1",
+              "r2"
+            ],
+            "label": "2",
+            "color": "warm",
+            "startBeat": 3,
+            "beatsPerHop": 2
+          }
+        ],
+        "highlight": [
+          "r2"
+        ]
+      },
+      "headline": "Out of Order",
+      "camera": {
+        "move": "static"
+      },
+      "accents": [
+        {
+          "beat": 4,
+          "sfx": "riser"
+        }
+      ],
+      "minBars": 2
+    },
+    {
+      "id": "reassembly",
+      "section": "verse",
+      "purpose": "numbering allows reassembly and re-requesting lost packets",
+      "narration": "So every packet is numbered, and your phone uses those numbers to line them back up in order, asking again for any packet that never showed up.",
+      "visual": {
+        "type": "packetize",
+        "mode": "reassemble",
+        "source": {
+          "icon": "packet",
+          "label": "Arriving Packets"
+        },
+        "count": 5,
+        "packetLabel": "seq",
+        "destination": {
+          "icon": "phone",
+          "label": "Your Phone"
+        }
+      },
+      "headline": "Numbered and Reassembled",
+      "camera": {
+        "move": "push-in"
+      },
+      "accents": [
+        {
+          "beat": 0,
+          "sfx": "blip"
+        },
+        {
+          "beat": 4,
+          "sfx": "chime"
+        }
+      ]
+    },
+    {
+      "id": "chorus-hop-3",
+      "section": "chorus",
+      "purpose": "final repeat of the key idea",
+      "lyric": "Packets on the move, hop hop hop!",
+      "visual": {
+        "type": "kinetic",
+        "style": "punch",
+        "emphasis": [
+          "hop",
+          "hop",
+          "hop"
+        ]
+      },
+      "camera": {
+        "move": "push-in"
+      },
+      "accents": [
+        {
+          "beat": 0,
+          "sfx": "riser"
+        },
+        {
+          "beat": 2,
+          "sfx": "hit"
+        },
+        {
+          "beat": 4,
+          "sfx": "chime"
+        }
+      ]
+    },
+    {
+      "id": "outro-recap",
+      "section": "outro",
+      "purpose": "recap the steps in order and send off",
+      "narration": "Split into packets, addressed, hopped router to router, flashed through undersea cables, then reassembled in order — that's a video crossing the world. Next time you hit play, picture the hops.",
+      "visual": {
+        "type": "steps",
+        "steps": [
+          {
+            "icon": "packet",
+            "label": "Split"
+          },
+          {
+            "icon": "packet",
+            "label": "Addressed"
+          },
+          {
+            "icon": "router",
+            "label": "Hopped"
+          },
+          {
+            "icon": "cable",
+            "label": "Undersea Light"
+          },
+          {
+            "icon": "check",
+            "label": "Reassembled"
+          }
+        ]
+      },
+      "headline": "Recap: The Journey",
+      "camera": {
+        "move": "pull-out"
+      },
+      "transition": "fade",
+      "mascot": {
+        "mood": "happy",
+        "position": "right"
+      },
+      "accents": [
+        {
+          "beat": 0,
+          "sfx": "chime"
+        }
+      ]
     }
   ]
 }

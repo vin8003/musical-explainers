@@ -1,0 +1,410 @@
+{
+  "claims": [
+    {
+      "shot": "intro-ocean-cable",
+      "claim": "Right now, your cat video is zipping through a cable on the ocean floor, crossing an entire ocean in under a second.",
+      "verdict": "ok",
+      "sources": [
+        "https://www.submarinenetworks.com/en/systems/trans-atlantic/project-express/hibernia-express-connects-new-york-to-london-in-under-58-95ms"
+      ]
+    },
+    {
+      "shot": "intro-ocean-cable",
+      "claim": "Across an Ocean, Instantly",
+      "verdict": "ok",
+      "sources": [
+        "https://www.submarinenetworks.com/en/systems/trans-atlantic/project-express/hibernia-express-connects-new-york-to-london-in-under-58-95ms"
+      ]
+    },
+    {
+      "shot": "chopped-into-packets",
+      "claim": "Before it leaves your phone, that video gets chopped into thousands of tiny pieces called packets.",
+      "verdict": "ok",
+      "sources": [
+        "https://www.baeldung.com/cs/tcp-max-packet-size",
+        "https://medium.com/@af5667/packet-size-maximums-notes-ed0d7e5d5740"
+      ]
+    },
+    {
+      "shot": "chopped-into-packets",
+      "claim": "Chopped Into Packets",
+      "verdict": "ok",
+      "sources": [
+        "https://www.baeldung.com/cs/tcp-max-packet-size"
+      ]
+    },
+    {
+      "shot": "packet-address",
+      "claim": "Each packet carries its own address label, like a postcard, so it knows exactly where it's headed.",
+      "verdict": "ok",
+      "sources": [
+        "https://www.cs.princeton.edu/courses/archive/fall24/cos109/13protocol.pdf"
+      ]
+    },
+    {
+      "shot": "packet-address",
+      "claim": "Every Packet Has an Address",
+      "verdict": "ok",
+      "sources": [
+        "https://www.cs.princeton.edu/courses/archive/fall24/cos109/13protocol.pdf"
+      ]
+    },
+    {
+      "shot": "routers-hop",
+      "claim": "Machines called routers read that address and pass each packet to the next router, one hop at a time, like a relay race.",
+      "verdict": "ok",
+      "sources": [
+        "https://www.techtarget.com/searchnetworking/definition/packet",
+        "https://www.cs.princeton.edu/courses/archive/fall24/cos109/13protocol.pdf"
+      ]
+    },
+    {
+      "shot": "routers-hop",
+      "claim": "Routers Pass It Along",
+      "verdict": "ok",
+      "sources": [
+        "https://www.techtarget.com/searchnetworking/definition/packet"
+      ]
+    },
+    {
+      "shot": "chorus-hop-1",
+      "claim": "Packets on the move, hop hop hop!",
+      "verdict": "ok",
+      "note": "no factual claim",
+      "sources": []
+    },
+    {
+      "shot": "different-paths",
+      "claim": "Packets from the same video don't all take the same route — each hop picks whichever path looks fastest and least busy at that moment.",
+      "verdict": "ok",
+      "sources": [
+        "https://en.wikibooks.org/wiki/A-level_Computing/AQA/Computer_Components,_The_Stored_Program_Concept_and_the_Internet/Structure_of_the_Internet/Packet_switching",
+        "https://www.sciencedirect.com/topics/computer-science/packet-switching-network"
+      ]
+    },
+    {
+      "shot": "different-paths",
+      "claim": "Different Paths, Same Trip",
+      "verdict": "ok",
+      "sources": [
+        "https://en.wikibooks.org/wiki/A-level_Computing/AQA/Computer_Components,_The_Stored_Program_Concept_and_the_Internet/Structure_of_the_Internet/Packet_switching"
+      ]
+    },
+    {
+      "shot": "undersea-light",
+      "claim": "Light Under the Sea",
+      "verdict": "ok",
+      "note": "no numeric claim here, just describes the medium",
+      "sources": [
+        "https://www.southampton.ac.uk/news/2013/04/speed-of-light-fibre-optic.page"
+      ]
+    },
+    {
+      "shot": "bridge-out-of-order",
+      "claim": "Here's the catch: packets can arrive out of order, or a few might get lost along the way.",
+      "verdict": "ok",
+      "sources": [
+        "https://wiki.wireshark.org/TCP_Analyze_Sequence_Numbers",
+        "https://www.destroyallsoftware.com/compendium/out-of-order-packets?share_key=637bf7e880afff8e"
+      ]
+    },
+    {
+      "shot": "bridge-out-of-order",
+      "claim": "Out of Order",
+      "verdict": "ok",
+      "sources": [
+        "https://wiki.wireshark.org/TCP_Analyze_Sequence_Numbers"
+      ]
+    },
+    {
+      "shot": "reassembly",
+      "claim": "So every packet is numbered, and your phone uses those numbers to line them back up in order, asking again for any packet that never showed up.",
+      "verdict": "ok",
+      "sources": [
+        "https://wiki.wireshark.org/TCP_Analyze_Sequence_Numbers"
+      ]
+    },
+    {
+      "shot": "reassembly",
+      "claim": "Numbered and Reassembled",
+      "verdict": "ok",
+      "sources": [
+        "https://wiki.wireshark.org/TCP_Analyze_Sequence_Numbers"
+      ]
+    },
+    {
+      "shot": "outro-recap",
+      "claim": "Split into packets, addressed, hopped router to router, flashed through undersea cables, then reassembled in order — that's a video crossing the world. Next time you hit play, picture the hops.",
+      "verdict": "ok",
+      "note": "summarizes claims already verified above",
+      "sources": [
+        "https://www.submarinenetworks.com/en/systems/trans-atlantic/project-express/hibernia-express-connects-new-york-to-london-in-under-58-95ms",
+        "https://en.wikibooks.org/wiki/A-level_Computing/AQA/Computer_Components,_The_Stored_Program_Concept_and_the_Internet/Structure_of_the_Internet/Packet_switching"
+      ]
+    },
+    {
+      "shot": "outro-recap",
+      "claim": "Recap: The Journey",
+      "verdict": "ok",
+      "note": "no factual claim",
+      "sources": []
+    },
+    {
+      "shot": "undersea-light",
+      "claim": "Between continents, those hops often travel as pulses of light, flashing down fiber optic cables laid across the seafloor at about two-thirds the speed of light.",
+      "verdict": "ok",
+      "sources": [
+        "https://news.ycombinator.com/item?id=12007573",
+        "https://www.earthdate.org/episodes/light-speed-under-the-sea",
+        "https://arxiv.org/pdf/1811.10737"
+      ]
+    },
+    {
+      "shot": "intro-ocean-cable",
+      "claim": "Coast",
+      "verdict": "ok",
+      "note": "no factual claim",
+      "sources": []
+    },
+    {
+      "shot": "intro-ocean-cable",
+      "claim": "Open Ocean",
+      "verdict": "ok",
+      "note": "no factual claim",
+      "sources": []
+    },
+    {
+      "shot": "intro-ocean-cable",
+      "claim": "Seafloor Cable",
+      "verdict": "ok",
+      "sources": [
+        "https://en.wikipedia.org/wiki/Submarine_communications_cable"
+      ]
+    },
+    {
+      "shot": "intro-ocean-cable",
+      "claim": "Crossing time: <1 second",
+      "verdict": "ok",
+      "sources": [
+        "https://www.submarinenetworks.com/en/systems/trans-atlantic/project-express/hibernia-express-connects-new-york-to-london-in-under-58-95ms",
+        "https://en.wikipedia.org/wiki/Transatlantic_communications_cable"
+      ]
+    },
+    {
+      "shot": "chopped-into-packets",
+      "claim": "Cat Video",
+      "verdict": "ok",
+      "note": "no factual claim",
+      "sources": []
+    },
+    {
+      "shot": "packet-address",
+      "claim": "From: 192.0.2.10",
+      "verdict": "ok",
+      "note": "192.0.2.0/24 is a TEST-NET-1 documentation address reserved by IANA, correctly used as a non-routable example",
+      "sources": [
+        "https://datatracker.ietf.org/doc/html/rfc5737"
+      ]
+    },
+    {
+      "shot": "packet-address",
+      "claim": "To: 203.0.113.5",
+      "verdict": "ok",
+      "note": "203.0.113.0/24 is TEST-NET-3, reserved for documentation use",
+      "sources": [
+        "https://datatracker.ietf.org/doc/html/rfc5737"
+      ]
+    },
+    {
+      "shot": "packet-address",
+      "claim": "Video data",
+      "verdict": "ok",
+      "note": "no factual claim",
+      "sources": []
+    },
+    {
+      "shot": "routers-hop",
+      "claim": "You",
+      "verdict": "ok",
+      "note": "no factual claim",
+      "sources": []
+    },
+    {
+      "shot": "routers-hop",
+      "claim": "Router",
+      "verdict": "ok",
+      "sources": [
+        "https://en.wikipedia.org/wiki/Router_(computing)"
+      ]
+    },
+    {
+      "shot": "routers-hop",
+      "claim": "packet",
+      "verdict": "ok",
+      "sources": [
+        "https://en.wikipedia.org/wiki/Network_packet"
+      ]
+    },
+    {
+      "shot": "different-paths",
+      "claim": "Video",
+      "verdict": "ok",
+      "note": "no factual claim",
+      "sources": []
+    },
+    {
+      "shot": "different-paths",
+      "claim": "Route A",
+      "verdict": "ok",
+      "sources": [
+        "https://en.wikipedia.org/wiki/IP_routing"
+      ]
+    },
+    {
+      "shot": "different-paths",
+      "claim": "Route B",
+      "verdict": "ok",
+      "sources": [
+        "https://en.wikipedia.org/wiki/IP_routing"
+      ]
+    },
+    {
+      "shot": "different-paths",
+      "claim": "Destination",
+      "verdict": "ok",
+      "note": "no factual claim",
+      "sources": []
+    },
+    {
+      "shot": "different-paths",
+      "claim": "packet 1",
+      "verdict": "ok",
+      "note": "no factual claim",
+      "sources": []
+    },
+    {
+      "shot": "different-paths",
+      "claim": "packet 2",
+      "verdict": "ok",
+      "note": "no factual claim",
+      "sources": []
+    },
+    {
+      "shot": "undersea-light",
+      "claim": "Pulses of light",
+      "verdict": "ok",
+      "sources": [
+        "https://itp.nyu.edu/networks/explanations/fiber-optics-cables-for-information-exchange/"
+      ]
+    },
+    {
+      "shot": "undersea-light",
+      "claim": "~2/3 light speed",
+      "verdict": "ok",
+      "sources": [
+        "https://arxiv.org/pdf/1811.10737"
+      ]
+    },
+    {
+      "shot": "undersea-light",
+      "claim": "Across the seafloor",
+      "verdict": "ok",
+      "sources": [
+        "https://en.wikipedia.org/wiki/Submarine_communications_cable"
+      ]
+    },
+    {
+      "shot": "bridge-out-of-order",
+      "claim": "Your Phone",
+      "verdict": "ok",
+      "note": "no factual claim",
+      "sources": []
+    },
+    {
+      "shot": "bridge-out-of-order",
+      "claim": "3",
+      "verdict": "ok",
+      "note": "no factual claim",
+      "sources": []
+    },
+    {
+      "shot": "bridge-out-of-order",
+      "claim": "1",
+      "verdict": "ok",
+      "note": "no factual claim",
+      "sources": []
+    },
+    {
+      "shot": "bridge-out-of-order",
+      "claim": "2",
+      "verdict": "ok",
+      "note": "no factual claim",
+      "sources": []
+    },
+    {
+      "shot": "reassembly",
+      "claim": "Arriving Packets",
+      "verdict": "ok",
+      "note": "no factual claim",
+      "sources": []
+    },
+    {
+      "shot": "outro-recap",
+      "claim": "Split",
+      "verdict": "ok",
+      "sources": [
+        "https://en.wikipedia.org/wiki/Network_packet"
+      ]
+    },
+    {
+      "shot": "outro-recap",
+      "claim": "Addressed",
+      "verdict": "ok",
+      "sources": [
+        "https://en.wikipedia.org/wiki/IP_routing"
+      ]
+    },
+    {
+      "shot": "outro-recap",
+      "claim": "Hopped",
+      "verdict": "ok",
+      "sources": [
+        "https://en.wikipedia.org/wiki/Router_(computing)"
+      ]
+    },
+    {
+      "shot": "outro-recap",
+      "claim": "Undersea Light",
+      "verdict": "ok",
+      "sources": [
+        "https://en.wikipedia.org/wiki/Submarine_communications_cable"
+      ]
+    },
+    {
+      "shot": "outro-recap",
+      "claim": "Reassembled",
+      "verdict": "ok",
+      "sources": [
+        "https://en.wikipedia.org/wiki/Transmission_Control_Protocol"
+      ]
+    }
+  ],
+  "checkedAt": "2026-10-10T14:20:57.715Z",
+  "history": [
+    {
+      "at": "2026-10-10T14:14:54.057Z",
+      "flagged": 1,
+      "revised": false
+    },
+    {
+      "at": "2026-10-10T14:15:33.639Z",
+      "flagged": 0,
+      "revised": true
+    },
+    {
+      "at": "2026-10-10T14:20:57.719Z",
+      "flagged": 0,
+      "revised": false
+    }
+  ]
+}
