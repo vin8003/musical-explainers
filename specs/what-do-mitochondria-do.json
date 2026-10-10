@@ -1,55 +1,277 @@
 {
+  "schemaVersion": 2,
   "slug": "what-do-mitochondria-do",
   "title": "What Do Mitochondria Actually Do?",
-  "bpm": 120,
-  "scenes": [
+  "world": "cell",
+  "music": {
+    "bpm": 120,
+    "mode": "major",
+    "mood": "bright"
+  },
+  "shots": [
     {
-      "kind": "hook",
-      "text": "Almost every cell has its own tiny power plant",
-      "caption": "Inside almost every cell in your body are structures called mitochondria that generate energy.",
-      "durationBeats": 4
+      "id": "hook-1",
+      "section": "intro",
+      "purpose": "Migrated from a v1 scene",
+      "narration": "Inside almost every cell in your body are structures called mitochondria that generate energy.",
+      "short": true,
+      "visual": {
+        "type": "title",
+        "kicker": "Look inside a cell",
+        "title": "Tiny power plants called mitochondria",
+        "icon": "mitochondrion"
+      },
+      "camera": {
+        "move": "push-in"
+      },
+      "accents": [
+        {
+          "beat": 0,
+          "sfx": "chime"
+        }
+      ],
+      "minBars": 1
     },
     {
-      "kind": "beat",
-      "text": "They turn food into usable energy",
-      "caption": "Mitochondria convert nutrients and oxygen into ATP, the molecule cells use to power their activities.",
-      "durationBeats": 8
+      "id": "beat-1",
+      "section": "verse",
+      "purpose": "Migrated from a v1 scene",
+      "narration": "Mitochondria convert nutrients and oxygen into ATP, the molecule cells use to power their activities.",
+      "short": true,
+      "visual": {
+        "type": "flow",
+        "inputs": [
+          {
+            "icon": "glucose",
+            "label": "Nutrients"
+          },
+          {
+            "icon": "oxygen",
+            "label": "Oxygen"
+          }
+        ],
+        "machine": {
+          "icon": "mitochondrion",
+          "label": "Mitochondria"
+        },
+        "outputs": [
+          {
+            "icon": "atp",
+            "label": "ATP"
+          }
+        ]
+      },
+      "headline": "They turn food into energy",
+      "camera": {
+        "move": "static"
+      },
+      "accents": [
+        {
+          "beat": 4,
+          "sfx": "pop"
+        }
+      ],
+      "minBars": 2
     },
     {
-      "kind": "beat",
-      "text": "Busy cells pack in more of them",
-      "caption": "Heart and muscle cells contain thousands of mitochondria because they demand so much energy.",
-      "durationBeats": 8
+      "id": "beat-2",
+      "section": "verse",
+      "purpose": "Migrated from a v1 scene",
+      "narration": "Heart and muscle cells contain thousands of mitochondria because they demand so much energy.",
+      "short": true,
+      "visual": {
+        "type": "population",
+        "groups": [
+          {
+            "label": "Typical cell",
+            "icon": "mitochondrion",
+            "count": 5
+          },
+          {
+            "label": "Heart & muscle cells",
+            "icon": "mitochondrion",
+            "count": 40,
+            "value": "Thousands"
+          }
+        ]
+      },
+      "headline": "Busy cells hold more mitochondria",
+      "camera": {
+        "move": "static"
+      },
+      "mascot": {
+        "mood": "wow",
+        "position": "right"
+      },
+      "accents": [
+        {
+          "beat": 4,
+          "sfx": "riser"
+        }
+      ],
+      "minBars": 2
     },
     {
-      "kind": "chorus",
-      "text": "Mitochondria, power it up!",
-      "caption": "Mitochondria generate the energy that keeps your cells running.",
-      "durationBeats": 4
+      "id": "chorus-1",
+      "section": "chorus",
+      "purpose": "Migrated from a v1 scene",
+      "lyric": "Mitochondria, power it up!",
+      "short": true,
+      "visual": {
+        "type": "kinetic",
+        "style": "punch"
+      },
+      "mascot": {
+        "mood": "happy",
+        "position": "left"
+      },
+      "accents": [
+        {
+          "beat": 0,
+          "sfx": "hit"
+        }
+      ],
+      "minBars": 1
     },
     {
-      "kind": "beat",
-      "text": "They carry their own tiny genome",
-      "caption": "Mitochondria have their own small set of DNA, separate from the DNA stored in the cell's nucleus.",
-      "durationBeats": 8
+      "id": "beat-3",
+      "section": "verse",
+      "purpose": "Migrated from a v1 scene",
+      "narration": "Mitochondria have their own small set of DNA, separate from the DNA stored in the cell's nucleus.",
+      "short": true,
+      "visual": {
+        "type": "anatomy",
+        "subject": "cell",
+        "label": "Cell",
+        "callouts": [
+          {
+            "label": "Own DNA",
+            "anchor": "mitochondria"
+          },
+          {
+            "label": "Nucleus DNA",
+            "anchor": "nucleus"
+          }
+        ]
+      },
+      "headline": "They carry their own genome",
+      "camera": {
+        "move": "static"
+      },
+      "accents": [
+        {
+          "beat": 4,
+          "sfx": "blip"
+        }
+      ],
+      "minBars": 2
     },
     {
-      "kind": "beat",
-      "text": "They were once free-living bacteria",
-      "caption": "Scientists believe mitochondria descend from ancient bacteria engulfed by early cells over a billion years ago.",
-      "durationBeats": 8
+      "id": "beat-4",
+      "section": "verse",
+      "purpose": "Migrated from a v1 scene",
+      "narration": "Scientists believe mitochondria descend from ancient bacteria engulfed by early cells over a billion years ago.",
+      "short": true,
+      "visual": {
+        "type": "timeline",
+        "events": [
+          {
+            "when": "Over 1 billion years ago",
+            "label": "Free-living bacterium",
+            "icon": "bacterium"
+          },
+          {
+            "when": "Soon after",
+            "label": "Engulfed by an early cell",
+            "icon": "cell"
+          },
+          {
+            "when": "Today",
+            "label": "Lives on as mitochondria",
+            "icon": "mitochondrion"
+          }
+        ]
+      },
+      "headline": "They were once free-living bacteria",
+      "camera": {
+        "move": "pan-right"
+      },
+      "accents": [
+        {
+          "beat": 5,
+          "sfx": "chime"
+        }
+      ],
+      "minBars": 2
     },
     {
-      "kind": "chorus",
-      "text": "Mitochondria, power it up!",
-      "caption": "Mitochondria generate the energy that keeps your cells running.",
-      "durationBeats": 4
+      "id": "chorus-2",
+      "section": "chorus",
+      "purpose": "Migrated from a v1 scene",
+      "lyric": "Mitochondria, power it up!",
+      "short": true,
+      "visual": {
+        "type": "kinetic",
+        "style": "punch"
+      },
+      "camera": {
+        "move": "pull-out"
+      },
+      "accents": [
+        {
+          "beat": 0,
+          "sfx": "hit"
+        }
+      ],
+      "minBars": 1
     },
     {
-      "kind": "recap",
-      "text": "Tiny organelles, massive energy impact",
-      "caption": "Mitochondria convert food and oxygen into the energy that powers nearly everything your cells do.",
-      "durationBeats": 8
+      "id": "recap-1",
+      "section": "outro",
+      "purpose": "Migrated from a v1 scene",
+      "narration": "Mitochondria convert food and oxygen into the energy that powers nearly everything your cells do.",
+      "short": true,
+      "visual": {
+        "type": "steps",
+        "steps": [
+          {
+            "icon": "glucose",
+            "label": "Food"
+          },
+          {
+            "icon": "oxygen",
+            "label": "Oxygen"
+          },
+          {
+            "icon": "mitochondrion",
+            "label": "Mitochondria"
+          },
+          {
+            "icon": "lightning",
+            "label": "Energy"
+          }
+        ]
+      },
+      "headline": "Tiny organelles, massive energy impact",
+      "camera": {
+        "move": "rise"
+      },
+      "mascot": {
+        "mood": "happy",
+        "position": "right"
+      },
+      "accents": [
+        {
+          "beat": 5,
+          "sfx": "chime"
+        }
+      ],
+      "minBars": 2
     }
-  ]
+  ],
+  "direction": {
+    "status": "directed",
+    "at": "2026-10-10T14:39:44.187Z",
+    "by": "claude"
+  }
 }

@@ -26,13 +26,6 @@
       ]
     },
     {
-      "claim": "Mitochondria generate the energy that keeps your cells running.",
-      "verdict": "ok",
-      "sources": [
-        "https://uen.pressbooks.pub/anatomyphysiology/chapter/mitochondria-the-energy-production-organelle/"
-      ]
-    },
-    {
       "claim": "Mitochondria have their own small set of DNA, separate from the DNA stored in the cell's nucleus.",
       "verdict": "ok",
       "sources": [
@@ -55,6 +48,210 @@
         "https://uen.pressbooks.pub/anatomyphysiology/chapter/mitochondria-the-energy-production-organelle/",
         "https://byjus.com/biology/energy-currency-of-the-cell/"
       ]
+    },
+    {
+      "shot": "chorus-1",
+      "claim": "Mitochondria, power it up!",
+      "verdict": "ok",
+      "note": "no factual claim"
+    },
+    {
+      "shot": "beat-4",
+      "claim": "They were once free-living bacteria",
+      "verdict": "ok",
+      "sources": [
+        "https://www.britannica.com/science/endosymbiosis",
+        "https://www.nature.com/articles/srep07949"
+      ]
+    },
+    {
+      "shot": "recap-1",
+      "claim": "Tiny organelles, massive energy impact",
+      "verdict": "ok",
+      "sources": [
+        "https://www.abcam.com/en-us/knowledge-center/cell-biology/overview-of-oxidative-phosphorylation",
+        "https://pmc.ncbi.nlm.nih.gov/articles/PMC4321783/"
+      ]
+    },
+    {
+      "shot": "hook-1",
+      "claim": "Tiny power plants called mitochondria",
+      "verdict": "ok",
+      "note": "Standard kid-friendly analogue of the well-established 'powerhouse of the cell' description.",
+      "sources": [
+        "https://opb.pbslearningmedia.org/resource/tdc02.sci.life.cell.mitochondria/the-powerhouse-of-the-cell/",
+        "https://en.wikipedia.org/wiki/Mitochondria"
+      ]
+    },
+    {
+      "shot": "hook-1",
+      "claim": "Look inside a cell",
+      "verdict": "ok",
+      "note": "no factual claim",
+      "sources": []
+    },
+    {
+      "shot": "beat-1",
+      "claim": "They turn food into energy",
+      "verdict": "ok",
+      "note": "Reasonable simplification of cellular respiration (nutrients + oxygen → ATP) for a general audience.",
+      "sources": [
+        "https://opb.pbslearningmedia.org/resource/tdc02.sci.life.cell.mitochondria/the-powerhouse-of-the-cell/",
+        "https://en.wikipedia.org/wiki/Mitochondria"
+      ]
+    },
+    {
+      "shot": "beat-1",
+      "claim": "Nutrients",
+      "verdict": "ok",
+      "note": "Correct input to mitochondrial respiration.",
+      "sources": [
+        "https://en.wikipedia.org/wiki/Mitochondria"
+      ]
+    },
+    {
+      "shot": "beat-1",
+      "claim": "Oxygen",
+      "verdict": "ok",
+      "note": "Oxygen is the terminal electron acceptor required for aerobic respiration in mitochondria.",
+      "sources": [
+        "https://en.wikipedia.org/wiki/Mitochondria"
+      ]
+    },
+    {
+      "shot": "beat-1",
+      "claim": "Mitochondria",
+      "verdict": "ok",
+      "note": "Correctly labeled organelle in the diagram.",
+      "sources": [
+        "https://en.wikipedia.org/wiki/Mitochondria"
+      ]
+    },
+    {
+      "shot": "beat-1",
+      "claim": "ATP",
+      "verdict": "ok",
+      "note": "ATP is the correct output of mitochondrial respiration.",
+      "sources": [
+        "https://en.wikipedia.org/wiki/Mitochondria"
+      ]
+    },
+    {
+      "shot": "beat-2",
+      "claim": "Busy cells hold more mitochondria",
+      "verdict": "ok",
+      "note": "General trend, correctly hedged ('more', not 'always/every'). Energy-demanding cells carry higher mitochondrial density.",
+      "sources": [
+        "https://pmc.ncbi.nlm.nih.gov/articles/PMC10378267/",
+        "https://en.wikipedia.org/wiki/Mitochondrion"
+      ]
+    },
+    {
+      "shot": "beat-2",
+      "claim": "Typical cell",
+      "verdict": "ok",
+      "note": "Comparison baseline label; no specific number is asserted in the text itself. Typical cells carry roughly hundreds to a couple thousand mitochondria depending on type.",
+      "sources": [
+        "https://en.wikipedia.org/wiki/Mitochondrion"
+      ]
+    },
+    {
+      "shot": "beat-2",
+      "claim": "Heart & muscle cells: Thousands",
+      "verdict": "ok",
+      "note": "Cardiomyocytes and muscle cells can contain thousands of mitochondria, occupying up to ~30-40% of cell volume in heart muscle.",
+      "sources": [
+        "https://pmc.ncbi.nlm.nih.gov/articles/PMC10378267/",
+        "https://link.springer.com/article/10.1007/s00395-023-01011-3"
+      ]
+    },
+    {
+      "shot": "beat-3",
+      "claim": "They carry their own genome",
+      "verdict": "ok",
+      "note": "Mitochondria possess their own circular mtDNA genome, separate from nuclear DNA.",
+      "sources": [
+        "https://en.wikipedia.org/wiki/Human_mitochondrial_genetics",
+        "https://en.wikipedia.org/wiki/Mitochondrion"
+      ]
+    },
+    {
+      "shot": "beat-3",
+      "claim": "Own DNA",
+      "verdict": "ok",
+      "note": "Correct — mitochondrial DNA (mtDNA) is distinct from nuclear DNA.",
+      "sources": [
+        "https://en.wikipedia.org/wiki/Human_mitochondrial_genetics"
+      ]
+    },
+    {
+      "shot": "beat-3",
+      "claim": "Nucleus DNA",
+      "verdict": "ok",
+      "note": "Correct contrast label — the bulk of a cell's genome resides in the nucleus.",
+      "sources": [
+        "https://en.wikipedia.org/wiki/Cell_nucleus"
+      ]
+    },
+    {
+      "shot": "beat-4",
+      "claim": "Over 1 billion years ago: Free-living bacterium",
+      "verdict": "ok",
+      "note": "Literally accurate; current estimates place the ancestral alphaproteobacterium at roughly 1.5–2.3 billion years ago, which is indeed 'over 1 billion years ago.'",
+      "sources": [
+        "https://www.nature.com/articles/srep07949",
+        "https://en.wikipedia.org/wiki/Endosymbiont"
+      ]
+    },
+    {
+      "shot": "beat-4",
+      "claim": "Soon after: Engulfed by an early cell",
+      "verdict": "ok",
+      "note": "Simplified but accurate summary of the endosymbiotic theory: an ancestral eukaryotic/archaeal host cell engulfed a free-living alphaproteobacterium.",
+      "sources": [
+        "https://en.wikipedia.org/wiki/Endosymbiont",
+        "https://www.nature.com/articles/srep07949"
+      ]
+    },
+    {
+      "shot": "beat-4",
+      "claim": "Today: Lives on as mitochondria",
+      "verdict": "ok",
+      "note": "Consistent with endosymbiotic theory — the engulfed bacterium's descendants persist as mitochondria in modern eukaryotic cells.",
+      "sources": [
+        "https://en.wikipedia.org/wiki/Endosymbiont"
+      ]
+    },
+    {
+      "shot": "recap-1",
+      "claim": "Food",
+      "verdict": "ok",
+      "note": "Consistent with earlier 'Nutrients' input label.",
+      "sources": [
+        "https://en.wikipedia.org/wiki/Mitochondrion"
+      ]
+    },
+    {
+      "shot": "recap-1",
+      "claim": "Energy",
+      "verdict": "ok",
+      "note": "Consistent with earlier ATP/energy output label.",
+      "sources": [
+        "https://en.wikipedia.org/wiki/Mitochondrion"
+      ]
+    }
+  ],
+  "checkedAt": "2026-10-10T14:41:09.463Z",
+  "history": [
+    {
+      "at": "2026-10-10T14:37:45.991Z",
+      "flagged": 0,
+      "revised": false
+    },
+    {
+      "at": "2026-10-10T14:41:09.463Z",
+      "flagged": 0,
+      "revised": false
     }
   ]
 }

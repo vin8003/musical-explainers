@@ -200,7 +200,7 @@ export const StepsShot: React.FC<{ ctx: ShotCtx }> = ({ ctx }) => {
   const f = useShotFrame(ctx);
   const { p, fmt, content: box } = ctx;
   const n = v.steps.length;
-  const at = staggerOnBeats(ctx, n, 0.7, 0.5);
+  const at = staggerOnBeats(ctx, n, 0.45, 0.5);
   const size = (fmt.vertical ? 150 : 170) * fmt.u * (n > 4 ? 0.85 : 1);
   const pos = (i: number) => (fmt.vertical ? { x: box.x + box.w * 0.22, y: box.y + box.h * ((i + 0.5) / n) } : { x: box.x + box.w * ((i + 0.5) / n), y: box.y + box.h * 0.42 });
   const active = at.reduce((acc, a, i) => (f >= a ? i : acc), -1);

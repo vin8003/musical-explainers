@@ -37,7 +37,7 @@ export type ClipResult = { src: string; seconds: number; renderSeconds: number; 
 
 /** Quality presets. "final" is what ships; "draft" is for fast iteration. */
 const QUALITY = {
-  final: { scale: 1, samples: 24, motionBlur: true },
+  final: { scale: 2 / 3, samples: 12, motionBlur: false },
   draft: { scale: 0.5, samples: 8, motionBlur: false },
 };
 

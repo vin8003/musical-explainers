@@ -10,7 +10,7 @@
   "world": "night",
   "direction": {
     "status": "directed",
-    "at": "2026-10-10T14:19:18.738Z",
+    "at": "2026-10-10T14:26:15.829Z",
     "by": "claude"
   },
   "music": {
@@ -374,41 +374,43 @@
       "purpose": "explain the physical medium: fiber optic cables",
       "narration": "Between continents, those hops often travel as pulses of light, flashing down fiber optic cables laid across the seafloor at about two-thirds the speed of light.",
       "visual": {
-        "type": "anatomy",
-        "subject": "cable",
-        "label": "Fiber Optic Cable",
-        "callouts": [
-          {
-            "label": "Pulses of light",
-            "x": 0.5,
-            "y": 0.25
-          },
-          {
-            "label": "~2/3 light speed",
-            "x": 0.5,
-            "y": 0.55
-          },
-          {
-            "label": "Across the seafloor",
-            "x": 0.5,
-            "y": 0.85
-          }
-        ]
+        "type": "scene3d",
+        "scene": "fiber-packets",
+        "fallback": {
+          "type": "anatomy",
+          "subject": "cable",
+          "label": "Fiber Optic Cable",
+          "callouts": [
+            {
+              "label": "Pulses of light",
+              "x": 0.5,
+              "y": 0.25
+            },
+            {
+              "label": "~2/3 light speed",
+              "x": 0.5,
+              "y": 0.55
+            },
+            {
+              "label": "Across the seafloor",
+              "x": 0.5,
+              "y": 0.85
+            }
+          ]
+        }
       },
       "headline": "Light Under the Sea",
-      "camera": {
-        "move": "push-in"
-      },
-      "mascot": {
-        "mood": "wow",
-        "position": "left"
-      },
       "accents": [
         {
           "beat": 0,
           "sfx": "whoosh"
+        },
+        {
+          "beat": 12,
+          "sfx": "chime"
         }
-      ]
+      ],
+      "minBars": 5
     },
     {
       "id": "chorus-hop-2",

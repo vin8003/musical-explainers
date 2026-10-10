@@ -22,8 +22,10 @@ export const JourneyShot: React.FC<{ ctx: ShotCtx }> = ({ ctx }) => {
   const W = fmt.w, H = fmt.h;
   const PW = W * (fmt.vertical ? 1.1 : 0.72);
   const n = v.stops.length;
-  const groundY = H * (fmt.vertical ? 0.5 : 0.56);
-  const seabedY = H * (fmt.vertical ? 0.74 : 0.86);
+  // The action (cable, traveller) stays inside the content box, above the captions.
+  const box = ctx.content;
+  const groundY = box.y + box.h * (fmt.vertical ? 0.45 : 0.4);
+  const seabedY = box.y + box.h * 0.97;
   const landCable = groundY + H * 0.06;
 
   // Camera: ease from stop to stop, holding a beat on each.
@@ -38,7 +40,8 @@ export const JourneyShot: React.FC<{ ctx: ShotCtx }> = ({ ctx }) => {
   })();
   const centerX = (i: number) => i * PW + PW / 2;
   const worldX = centerX(0) + pos * PW;
-  const camX = worldX - W / 2;
+  // Keep the world filling the frame; the traveller moves off-centre at the ends.
+  const camX = Math.max(0, Math.min(n * PW - W, worldX - W / 2));
   const sceneAt = (x: number) => v.stops[Math.max(0, Math.min(n - 1, Math.floor(x / PW)))].scene;
   const cableY = (x: number) => {
     // Blend between neighbouring panels across the middle 40% of each boundary.
@@ -76,7 +79,7 @@ export const JourneyShot: React.FC<{ ctx: ShotCtx }> = ({ ctx }) => {
         <path d={cablePts.join(" ")} stroke={alpha(p.accent, 0.5)} strokeWidth={5 * fmt.u} fill="none" strokeLinecap="round" />
         <path d={trail.join(" ")} stroke={p.primary} strokeWidth={8 * fmt.u} fill="none" strokeLinecap="round" opacity={0.9} />
       </svg>
-      <div style={{ position: "absolute", left: W / 2, top: tY, transform: "translate(-50%, -50%)" }}>
+      <div style={{ position: "absolute", left: worldX - camX, top: tY, transform: "translate(-50%, -50%)" }}>
         <div style={{ position: "absolute", left: "50%", top: "50%", width: travellerSize * 2, height: travellerSize * 2, transform: "translate(-50%,-50%)", background: `radial-gradient(circle, ${alpha(p.primary, 0.5)} 0%, transparent 65%)` }} />
         <Icon id={v.traveller.icon} p={p} size={travellerSize} style={{ position: "relative" }} />
       </div>
@@ -84,13 +87,13 @@ export const JourneyShot: React.FC<{ ctx: ShotCtx }> = ({ ctx }) => {
         const near = 1 - Math.min(1, Math.abs(pos - i) * 1.6);
         const x = centerX(i) - camX;
         return near > 0.01 ? (
-          <div key={i} style={{ position: "absolute", left: x, top: fmt.safe.y + (fmt.vertical ? 120 : 30) * fmt.u, transform: "translateX(-50%)" }}>
+          <div key={i} style={{ position: "absolute", left: Math.max(fmt.safe.x + 160 * fmt.u, Math.min(fmt.safe.x + fmt.safe.w - 160 * fmt.u, x)), top: Math.max(box.y + 12 * fmt.u, groundY - (fmt.vertical ? 150 : 120) * fmt.u), transform: "translateX(-50%)" }}>
             <Label text={s.label} p={p} fmt={fmt} k={near} size={34} tone="light" />
           </div>
         ) : null;
       })}
       {v.stat ? (
-        <div style={{ position: "absolute", right: fmt.w - fmt.safe.x - fmt.safe.w, top: fmt.safe.y + (fmt.vertical ? 260 : 20) * fmt.u, textAlign: "right", opacity: appear(f, ctx.fpb * 2, 14) }}>
+        <div style={{ position: "absolute", right: fmt.w - fmt.safe.x - fmt.safe.w, top: ctx.content.y + (fmt.vertical ? 10 : 0) * fmt.u, textAlign: "right", opacity: appear(f, ctx.fpb * 2, 14), background: alpha(p.bg[1], 0.55), padding: `${10 * fmt.u}px ${18 * fmt.u}px`, borderRadius: 16 * fmt.u }}>
           <div style={{ fontFamily: theme.font.body, fontWeight: 700, fontSize: 26 * fmt.u, color: p.textMuted, textTransform: "uppercase", letterSpacing: 3 * fmt.u }}>{v.stat.label}</div>
           <div style={{ fontFamily: theme.font.display, fontWeight: 800, fontSize: 64 * fmt.u, color: p.primary }}>{v.stat.value}</div>
         </div>

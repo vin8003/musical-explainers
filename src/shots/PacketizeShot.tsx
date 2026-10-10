@@ -19,7 +19,11 @@ export const PacketizeShot: React.FC<{ ctx: ShotCtx }> = ({ ctx }) => {
   const cols = Math.ceil(Math.sqrt(n));
   const rows = Math.ceil(n / cols);
   const S = Math.min(fmt.vertical ? box.w * 0.62 : box.h * 0.62, fmt.vertical ? box.h * 0.36 : box.w * 0.34);
-  const tw = S / cols, th = S / rows;
+  const th = S / rows;
+  // The last row stretches its tiles so the picture is always complete.
+  const inRow = (r: number) => Math.min(cols, n - r * cols);
+  const tileW = (i: number) => S / inRow(Math.floor(i / cols));
+  const tw = S / cols;
   // Whole picture position, and where the separated packets spread out.
   const whole = fmt.vertical ? { x: box.x + box.w / 2 - S / 2, y: box.y + box.h * 0.04 } : { x: box.x + box.w * 0.04, y: box.y + box.h / 2 - S / 2 };
   const spreadArea = fmt.vertical
@@ -39,7 +43,8 @@ export const PacketizeShot: React.FC<{ ctx: ShotCtx }> = ({ ctx }) => {
 
   const tiles = Array.from({ length: n }, (_, i) => {
     const c = i % cols, r = Math.floor(i / cols);
-    const home = { x: whole.x + c * tw, y: whole.y + r * th };
+    const w = tileW(i);
+    const home = { x: whole.x + c * w, y: whole.y + r * th };
     const sc = i % scols, sr = Math.floor(i / scols);
     const spread = { x: spreadArea.x + sc * cellW + cellW / 2 - (tw * tileScale) / 2, y: spreadArea.y + sr * cellH + cellH / 2 - (th * tileScale) / 2 };
     const rank = split ? i : order.indexOf(i);
@@ -51,28 +56,36 @@ export const PacketizeShot: React.FC<{ ctx: ShotCtx }> = ({ ctx }) => {
     const s = lerp(fromS, toS, t);
     const rot = Math.sin(t * Math.PI) * (random(`${ctx.seed}-r-${i}`) - 0.5) * 24;
     const k = split ? 1 : appear(f, moveStart + rank * stagger - ctx.fpb, ctx.fpb);
-    return { i, c, r, x, y, s, rot, t, k, tagK: split ? appear(f, moveStart + rank * stagger + ctx.fpb, 10) : 1 - t };
+    return { i, c, r, w, x, y, s, rot, t, k, tagK: split ? appear(f, moveStart + rank * stagger + ctx.fpb, 10) : 1 - t };
   });
   const done = !split && f > allIn;
   const doneK = appear(f, allIn, 14);
+  // Once rebuilt, the finished picture moves to the centre so the frame isn't lopsided.
+  const centerK = split ? 0 : appear(f, allIn + ctx.fpb, 24);
+  const dx = (box.x + box.w / 2 - (whole.x + S / 2)) * centerK, dy = (box.y + box.h / 2 - (whole.y + S / 2)) * centerK;
   const label = (i: number) => (v.packetLabel === "none" ? null : v.packetLabel === "address" ? `→ ${v.destination?.label ?? "you"}` : `#${i + 1}`);
 
   return (
-    <AbsoluteFill>
+    <AbsoluteFill style={{ transform: `translate(${dx}px, ${dy}px) scale(${1 + 0.12 * centerK})`, transformOrigin: `${whole.x + S / 2}px ${whole.y + S / 2}px` }}>
       {/* Slots / outline of the whole picture */}
       <div style={{ position: "absolute", left: whole.x - 14 * fmt.u, top: whole.y - 14 * fmt.u, width: S + 28 * fmt.u, height: S + 28 * fmt.u, borderRadius: theme.radius.md * fmt.u, border: `${3 * fmt.u}px dashed ${alpha(p.line, split ? 0.5 * appear(f, moveStart, 20) : 0.7)}`, boxShadow: done ? `0 0 ${60 * fmt.u * doneK}px ${alpha(p.accent, 0.5)}` : "none" }} />
+      {split ? (
+        <div style={{ position: "absolute", left: whole.x, top: whole.y, width: S, height: S, opacity: 0.18 * appear(f, moveStart, 20), filter: "grayscale(1)" }}>
+          <SourceCard icon={v.source.icon} p={p} S={S} />
+        </div>
+      ) : null}
       {!split
         ? Array.from({ length: n }, (_, i) => (
-            <div key={i} style={{ position: "absolute", left: whole.x + (i % cols) * tw, top: whole.y + Math.floor(i / cols) * th, width: tw, height: th, display: "flex", alignItems: "center", justifyContent: "center", color: alpha(p.textMuted, 0.6), fontFamily: theme.font.mono, fontWeight: 700, fontSize: Math.min(tw, th) * 0.22 }}>
+            <div key={i} style={{ position: "absolute", left: whole.x + (i % cols) * tileW(i), top: whole.y + Math.floor(i / cols) * th, width: tileW(i), height: th, display: "flex", alignItems: "center", justifyContent: "center", color: alpha(p.textMuted, 0.6), fontFamily: theme.font.mono, fontWeight: 700, fontSize: Math.min(tw, th) * 0.22 }}>
               #{i + 1}
             </div>
           ))
         : null}
       {tiles.map((t) => (
-        <div key={t.i} style={{ position: "absolute", left: t.x, top: t.y, width: tw, height: th, transform: `scale(${t.s}) rotate(${t.rot}deg)`, transformOrigin: "0 0", opacity: t.k }}>
+        <div key={t.i} style={{ position: "absolute", left: t.x, top: t.y, width: t.w, height: th, transform: `scale(${t.s}) rotate(${t.rot}deg)`, transformOrigin: "0 0", opacity: t.k }}>
           <div style={{ position: "absolute", inset: 2 * fmt.u, overflow: "hidden", borderRadius: (split ? t.t : 1 - t.t) * 14 * fmt.u, background: alpha(p.surfaceHi, 0.9), boxShadow: `0 ${10 * fmt.u}px ${24 * fmt.u}px ${alpha("#000", 0.35 * Math.max(t.t, split ? 0 : 1 - t.t))}` }}>
-            <div style={{ position: "absolute", left: -t.c * tw, top: -t.r * th }}>
-              <Icon id={v.source.icon} p={p} size={S} />
+            <div style={{ position: "absolute", left: -t.c * t.w, top: -t.r * th, width: S, height: S }}>
+              <SourceCard icon={v.source.icon} p={p} S={S} />
             </div>
           </div>
           {label(t.i) ? (
@@ -95,3 +108,13 @@ export const PacketizeShot: React.FC<{ ctx: ShotCtx }> = ({ ctx }) => {
     </AbsoluteFill>
   );
 };
+
+/** The whole "file" as a full-bleed picture, so every slice has visible content. */
+const SourceCard: React.FC<{ icon: string; p: ShotCtx["p"]; S: number }> = ({ icon, p, S }) => (
+  <div style={{ position: "absolute", inset: 0, borderRadius: theme.radius.md, background: `linear-gradient(135deg, ${p.secondary} 0%, ${p.warm} 55%, ${p.primary} 100%)`, overflow: "hidden" }}>
+    <div style={{ position: "absolute", inset: 0, backgroundImage: `repeating-linear-gradient(45deg, ${alpha("#ffffff", 0.08)} 0 ${S / 16}px, transparent ${S / 16}px ${S / 8}px)` }} />
+    <div style={{ position: "absolute", left: S * 0.1, top: S * 0.1 }}>
+      <Icon id={icon} p={p} size={S * 0.8} />
+    </div>
+  </div>
+);

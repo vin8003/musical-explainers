@@ -241,6 +241,11 @@ export function lintSpec(spec) {
     const a = shots[i - 1].visual?.type, b = shots[i].visual?.type;
     if (a && a === b && a !== "network") warnings.push(`shots ${i} and ${i + 1} both use "${a}"; vary the treatment unless it is a deliberate continuation`);
   }
+  for (const s of shots) {
+    const labels = (s.visual?.nodes ?? []).map((n) => n.label).filter(Boolean);
+    const dup = labels.filter((l, i) => labels.indexOf(l) !== i && l !== "Router");
+    if (dup.length) warnings.push(`shot ${s.id}: node label "${dup[0]}" is repeated; repeated labels read as the same thing`);
+  }
   const counts = {};
   for (const s of shots) counts[s.visual?.type] = (counts[s.visual?.type] ?? 0) + 1;
   for (const [t, n] of Object.entries(counts)) if (shots.length >= 6 && n / shots.length > 0.4) warnings.push(`"${t}" is used in ${n} of ${shots.length} shots`);
@@ -271,7 +276,7 @@ export function migrateSpec(spec) {
         id: `${base}-${seen[base]}`,
         section: sectionFor[sc.kind] ?? "verse",
         purpose: "Migrated from a v1 scene",
-        headline: chorus ? undefined : sc.text,
+        headline: chorus || String(sc.text).split(/\s+/).length > 8 ? undefined : sc.text,
         narration: chorus ? undefined : sc.caption ?? sc.text,
         lyric: chorus ? sc.text : undefined,
         minBars: Math.max(1, Math.round((sc.durationBeats ?? 8) / 4)),

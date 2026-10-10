@@ -24,6 +24,9 @@ export const KineticShot: React.FC<{ ctx: ShotCtx }> = ({ ctx }) => {
   const emph = new Set((v.emphasis ?? []).map((e) => e.toLowerCase()));
   const style = v.style ?? "stack";
   const chorus = ctx.shot.section === "chorus";
+  // Repeated choruses shouldn't look frozen: each repeat gets its own colour and ring motion.
+  const repeat = ctx.spec.shots.filter((s, i) => s.section === "chorus" && i < ctx.spec.shots.indexOf(ctx.shot)).length;
+  const ringColors = [[p.primary, p.secondary], [p.accent, p.primary], [p.secondary, p.accent]][repeat % 3];
   const maxSize = (fmt.vertical ? 150 : 150) * fmt.u;
   const fits = lines.map((l) => fitText(l, box.w * 0.92, { maxSize: style === "punch" ? maxSize : maxSize * 0.8, minSize: 56 * fmt.u, maxLines: 1 }));
   const size = Math.min(...fits.map((x) => x.size));
@@ -39,7 +42,7 @@ export const KineticShot: React.FC<{ ctx: ShotCtx }> = ({ ctx }) => {
       {chorus ? (
         <svg width={fmt.w} height={fmt.h} style={{ position: "absolute", inset: 0 }}>
           {[0, 1, 2].map((i) => (
-            <circle key={i} cx={fmt.w / 2} cy={box.y + box.h / 2} r={(260 + i * 170 + ring * 40) * fmt.u} fill="none" stroke={alpha(i === 1 ? p.secondary : p.primary, 0.12 + ring * 0.18)} strokeWidth={(10 - i * 2) * fmt.u} />
+            <circle key={i} cx={fmt.w / 2 + (repeat % 2 ? 1 : -1) * Math.sin(f / 40 + i) * 30 * fmt.u} cy={box.y + box.h / 2} r={(260 + i * 170 + ring * 40 + repeat * 30) * fmt.u} fill="none" stroke={alpha(i === 1 ? ringColors[1] : ringColors[0], 0.12 + ring * 0.18)} strokeWidth={(10 - i * 2) * fmt.u} strokeDasharray={repeat === 1 ? `${18 * fmt.u} ${14 * fmt.u}` : undefined} />
           ))}
         </svg>
       ) : null}
@@ -52,7 +55,7 @@ export const KineticShot: React.FC<{ ctx: ShotCtx }> = ({ ctx }) => {
                 const idx = wi++;
                 const hit = hits[idx];
                 const k = appear(f, hit - 3, style === "punch" ? 6 : 10);
-                const pop = style === "punch" ? interpolate(f - hit, [-3, 2, 10], [1.5, 0.96, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" }) : 1;
+                const pop = style === "punch" ? interpolate(f - hit, [-3, 2, 10], [1.22, 0.97, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" }) : 1;
                 const on = f >= hit - 2 && (hits[idx + 1] == null || f < hits[idx + 1] + ctx.fpb * 0.5);
                 const isEmph = emph.has(w.toLowerCase()) || (chorus && li === 0 && i === 0);
                 return (
@@ -64,11 +67,12 @@ export const KineticShot: React.FC<{ ctx: ShotCtx }> = ({ ctx }) => {
                       fontSize: size,
                       lineHeight: 1.05,
                       letterSpacing: -1 * fmt.u,
-                      color: isEmph ? p.primary : p.text,
+                      color: isEmph ? ringColors[0] : p.text,
                       opacity: k,
                       transform: `translateY(${(1 - k) * 40 * fmt.u}px) scale(${pop})`,
                       textShadow: on && chorus ? `0 0 ${30 * fmt.u}px ${alpha(p.primary, 0.6)}` : `0 ${6 * fmt.u}px 0 ${alpha("#000", 0.25)}`,
                       display: "inline-block",
+                      transformOrigin: "50% 80%",
                     }}
                   >
                     {w}

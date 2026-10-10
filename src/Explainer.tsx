@@ -94,7 +94,14 @@ const ShotFrame: React.FC<{ spec: VideoSpec; shot: Shot; timed: TimedShot; fmt: 
   const hw = fmt.stage.w * (fmt.vertical ? 1 : 0.82);
   const hfit = hasHeadline ? fitText(shot.headline!, hw, { maxSize: (fmt.vertical ? 96 : 84) * fmt.u, minSize: (fmt.vertical ? 60 : 48) * fmt.u, maxLines: fmt.vertical ? 3 : 2 }) : null;
   const headH = hfit ? hfit.lines.length * hfit.size * 1.12 + 30 * fmt.u : 0;
-  const content = { ...fmt.stage, y: fmt.stage.y + headH, h: fmt.stage.h - headH };
+  let content = { ...fmt.stage, y: fmt.stage.y + headH, h: fmt.stage.h - headH };
+  // Keep the mascot from covering the visual: give it its own corner.
+  const showMascot = Boolean(shot.mascot) && shot.visual.type !== "character";
+  const mSize = (fmt.vertical ? 300 : 260) * fmt.u;
+  if (showMascot) {
+    if (fmt.vertical) content = { ...content, h: content.h - mSize * 0.75 };
+    else content = shot.mascot!.position === "left" ? { ...content, x: content.x + mSize * 0.85, w: content.w - mSize * 0.85 } : { ...content, w: content.w - mSize * 0.85 };
+  }
   const ctx: ShotCtx = { spec, shot, timed, p, fmt, fpb, lead, dur, content, seed: `${spec.slug}-${shot.id}`, clip };
   const System = SYSTEMS[shot.visual.type];
 
@@ -108,8 +115,6 @@ const ShotFrame: React.FC<{ spec: VideoSpec; shot: Shot; timed: TimedShot; fmt: 
   const cam = cameraTransform(shot, (f + lead) / (dur + lead));
   const narr = timed.narration;
   const talking = narr ? f >= narr.startFrame - timed.startFrame && f < narr.startFrame - timed.startFrame + narr.durationFrames : false;
-  const showMascot = shot.mascot && shot.visual.type !== "character";
-  const mSize = (fmt.vertical ? 300 : 260) * fmt.u;
 
   return (
     <AbsoluteFill style={{ ...enter.outer, ...mergeOuter(leave) }}>

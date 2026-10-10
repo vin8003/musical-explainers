@@ -1,113 +1,77 @@
 # musical-explainers
 
-A YouTube channel of short, musical, flashy explainer videos, produced mostly by Claude with about 10 minutes of human time per video.
+A YouTube channel of musical explainer videos, produced mostly by Claude with a few minutes of human review per video.
 
-The core idea: **Claude writes code that renders the animation** instead of asking an AI video generator for clips. Generators like Veo, Runway and Kling look impressive, but characters drift from shot to shot, diagrams come out wrong, and every clip costs money. With code-driven animation ([Remotion](https://www.remotion.dev/) for most topics, [Manim](https://www.manim.community/) for math and physics), every video is consistent and accurate, renders cost almost nothing, and Claude can fix its own mistakes. That is what makes "minimal human intervention" realistic.
+The core idea: **Claude writes and directs; code renders.** Instead of asking an AI video generator for clips (characters drift, diagrams come out wrong, every clip costs money), Claude writes a fact-checked script, then a structured storyboard, and a library of code-driven scene systems ([Remotion](https://www.remotion.dev/)) renders it. Optional Blender clips add real 3D where depth genuinely helps. Every render is reproducible, costs nothing extra, and can be checked and fixed automatically.
 
-## Repository layout
+## What it does today
 
-```
-README.md               This plan
-docs/pipeline.md        Stage-by-stage detail: inputs, outputs, tools, file formats
-topics/backlog.json     Topic queue (target ~50 topics)
-specs/                  One VideoSpec JSON per video (script, lyrics, beats, timing)
-src/                    Remotion project (React -> MP4)
-  Root.tsx              Registers compositions (main video + Short)
-  Explainer.tsx         Renders a VideoSpec
-  theme.ts              Palette, fonts, easing: chosen once, reused everywhere
-  components/           Reusable library: Mascot, BeatFlash, TextPop, ...
-scripts/generate.ts     Script-to-video generator (topic -> spec -> render)
-scripts/claude.ts       Runs `claude -p` locally (subscription, no API key)
-scripts/providers/      Swappable music/voice providers (stub by default)
-prompts/                Prompts for the script and fact-check stages
-admin/                  Local web admin panel (npm run admin): backlog, runs, specs, approvals
-```
+- **A real storyboard stage.** `specs/<slug>.json` is a validated, versioned storyboard (VideoSpec v2): per shot, the narration and lyric, a visual system with its own data (network diagram nodes and packet routes, anatomy callouts, journey stops...), camera move, transition, mascot, musical accents, and whether it belongs in the vertical Short. Old v1 specs are migrated automatically.
+- **Twelve scene systems** (`src/shots/`): title cards, kinetic typography, network diagrams with packets hopping along routes, a file cut into packets and reassembled, anatomy close-ups with callouts, parallax journeys, flows, quantity comparisons, two-column comparisons, timelines, numbered steps and a mascot character shot, plus `scene3d` for Blender clips with a 2D fallback. They share one art direction (`src/theme.ts`: four colour "worlds", Avenir Next, one easing language), safe areas and text fitting for 16:9 and 9:16 (`src/layout.ts`), and a code-drawn illustration library (`src/assets/icons.tsx`).
+- **Music and narration that drive the edit.** Narration (macOS `say`) is measured first; shots are cut to whole bars of the song; a built-in composer arranges music on that timeline by section; the chorus is sung (pitch-shifted speech) on the beat with the words landing on screen at the same frames; SFX mark transitions and selected accents; the mix is ducked and normalised to -14 LUFS. All local and free. ElevenLabs is an optional, off-by-default provider.
+- **A staged, recoverable pipeline** (`npm run pipeline`): script, fact-check (with web search and bounded revision, re-run only for new text, including diagram labels), direction, assets, audio, render, QA, packaging. Status is computed from files; stale work re-runs, fresh work is cached; locks, cancellation, archives and immutable render candidates keep good output safe.
+- **Automated QA on the actual files**: streams, durations, loudness, silence, sampled frames (blank, frozen, repeated, touching the edge, missing assets), text fit, contact sheets, and an optional Claude review of the frames.
+- **An admin panel** (`npm run admin`) that runs all of it from the browser.
+
+See [docs/pipeline.md](docs/pipeline.md) for every stage, file, flag and recovery step.
 
 ## Quick start
 
 ```bash
 npm install
-claude --version   # Claude Code CLI, logged in with your subscription (no API key)
-npm run studio                                      # preview in the browser
-npm run generate -- "How does the internet work?"   # topic -> specs/<slug>.json (needs `claude` CLI logged in)
-npm run generate -- "How does the internet work?" --render   # ...and render out/<slug>.mp4
+claude --version          # Claude Code CLI, logged in with your subscription (no API key)
+npm run admin             # http://localhost:4321: the production cockpit
+npm run pipeline -- how-does-the-internet-work            # continue production from wherever it is
+npm run pipeline -- "Why is the sky blue?" --fresh        # new video from a backlog topic
+npm run studio            # Remotion Studio, for working on scene systems
+npm test && npm run typecheck
 ```
+
+Requirements: Node 18+, ffmpeg on PATH, the `claude` CLI for script/fact-check/direction, macOS `say` for the default narration (without it, videos get music only and are marked "partial audio"). Optional: Blender 4.2+ for 3D clips (found at `/Applications/Blender.app` or via `BLENDER_BIN`).
+
+Start the panel with the same Node that installed `node_modules` (native arm64 on Apple Silicon, e.g. `/opt/homebrew/bin/npm run admin`); the panel warns if they don't match. If you see an esbuild "installed for another platform" error, reinstall `node_modules` from a terminal where `node -p process.arch` prints `arm64`.
 
 ## Admin panel
 
-```bash
-npm run admin        # then open http://localhost:4321
-```
+`npm run admin` serves a local-only panel (127.0.0.1, same-origin writes only, no extra dependencies). It shells out to the pipeline, one job at a time, and never re-implements pipeline rules in the browser.
 
-A local web panel that runs the whole operation from the browser. It is plain Node with no extra dependencies, listens only on localhost, and runs pipeline jobs by calling `npm run generate` (so Claude stages use your `claude` CLI login, no API key). Jobs run one at a time.
+- **Videos** and **Backlog**: every topic with a status chip per stage (up to date, out of date, failed, not done) and its sound status; add, edit, reorder and re-status topics.
+- **Overview**: the eight stages with their real status and reason, the last successful checkpoint, errors with hints, and a Run button per stage; "Continue production" runs whatever is missing or stale; "Fresh script" archives and restarts.
+- **Storyboard**: the shot list with thumbnails from the latest render, timing in bars, visual type, section and Short membership; edit any shot (or the raw JSON), validate, save (the previous version is archived); select shots to redirect with notes or to preview at half resolution.
+- **Fact-check**: every spoken and on-screen claim with verdict, correction and sources.
+- **Assets & audio**: providers, per-cut audio status (full, partial, silent), loudness, licences, players for the mix and the music; illustration and licence report; Blender availability and 3D clip status with a preview.
+- **Quality**: the QA report per candidate, contact sheets, frames per shot, and Claude's review when requested.
+- **Review**: pick a candidate, compare it side by side with another (linked players), approve it or reject it with notes. Preview renders can't be approved; approved candidates are never deleted.
+- **Logs** and **Jobs**: live logs, progress (including Blender frames), cancel.
 
-- **Videos:** every backlog topic and spec with its status per stage (script, fact-check, render, approval), and a "waiting for your approval" list.
-- **Backlog:** add, edit, reorder, delete and re-status topics in `topics/backlog.json`.
-- **Run:** full pipeline, script + fact-check only, or render only, with an optional fresh script (the old spec is moved to `out/archive/`). Live logs, render progress and Cancel; logs are also saved in `out/logs/`.
-- **Spec:** edit `specs/<slug>.json` in a form (scenes, beats, BPM) or as raw JSON, validated on save.
-- **Fact-check:** every claim from `specs/<slug>.sources.json` with its verdict, correction and source links; flagged claims first.
-- **Review:** watch the main video and the Short (2x by default), then approve, or reject with notes. The decision is stored on the topic in the backlog (`status` plus `review`).
-
-Start it with the same Node that installed `node_modules` (native arm64 on Apple Silicon, e.g. `/opt/homebrew/bin/npm run admin`); the panel shows a warning if they don't match or if the `claude` CLI isn't found. `ADMIN_PORT` changes the port.
-
-Requires Node 18 or newer. If you see an esbuild "installed for another platform" error, `node_modules` was installed under a different CPU architecture (e.g. Rosetta vs native Apple Silicon). Fix: `rm -rf node_modules package-lock.json && npm install` from a terminal where `node -p process.arch` prints `arm64`. Don't mix an x64 and an arm64 Node on the same checkout.
-
-## The pipeline
-
-```
-Topic queue -> Script + lyrics -> Fact-check -> Song -> Voiceover -> Animation code
-  -> Render -> Self-review -> [YOU: approve] -> Thumbnail + metadata -> Upload/schedule
-```
-
-| # | Stage | What does it | Notes |
-|---|-------|--------------|-------|
-| 1 | Topic selection | Claude + YouTube search data / Google Trends | Keep a backlog of about 50 topics in `topics/backlog.json` (or a Notion database) |
-| 2 | Script | Claude Code (`claude -p`, local) | Hook in the first 5 seconds, 3–4 "beats", a catchy chorus that holds the key idea, and a recap. Two versions: a 60s Short and a 3–5 min main video |
-| 3 | Fact-check | A second `claude -p` pass with web search | Checks every claim and attaches sources. Don't skip this: wrong facts sink an educational channel |
-| 4 | Music | Optional stub for now; later ElevenLabs Music API, or Suno/Udio | ElevenLabs has an official API. Suno and Udio mostly don't, and third-party wrappers break their terms. Check the commercial-use license on every tool |
-| 5 | Narration | Optional stub for now; later ElevenLabs TTS | Gives word-level timestamps, so the animation can sync to the speech |
-| 6 | Animation | Remotion (React -> MP4) | Claude writes scenes from a reusable library: mascot, transitions, text pops, particle bursts, beat-synced effects. Manim suits math and physics |
-| 7 | Render | Remotion CLI locally, or Remotion Lambda | A few minutes per video |
-| 8 | Self-review | Claude looks at sampled frames | Catches overlapping text, off-screen items and timing problems, then re-renders |
-| 9 | Your approval | You | Watch at 2x and tap approve. This is the one step to keep (see pitfalls) |
-| 10 | Thumbnail + SEO | Claude | Title, description, tags and chapters. Thumbnail rendered from the same Remotion components. Test 2–3 thumbnails with YouTube's "Test & Compare" |
-| 11 | Upload | YouTube Data API v3 (`videos.insert`) | Set `publishAt` to schedule. Set the AI-content disclosure flag and the "made for kids" flag |
-| 12 | Run on a schedule | Claude Code scheduled tasks, cron, or GitHub Actions | e.g. 3 videos a week, then a notification asking for approval |
-
-See [docs/pipeline.md](docs/pipeline.md) for inputs, outputs and file formats per stage.
-
-## Making it musical and flashy without feeling cheap
-
-- **A recurring mascot plus a theme song.** Brand recognition is what makes viewers come back.
-- **Sync everything to the beat.** Use the generated song's BPM to time cuts, zooms and colour flashes (`BeatFlash` in `src/components`).
-- **Teach the concept in the chorus.** For example, "Mitochondria, power it up!" The repeated line is what sticks.
-- **Use a consistent visual style.** Pick a palette, font and easing curve once (`src/theme.ts`) and reuse them in every video.
-
-## Pitfalls that will bite if ignored
-
-- **YouTube's "inauthentic content" monetization rules.** Channels that mass-produce near-identical AI videos get demonetized. Avoid this with real variety, a recognizable format and genuine educational value. That is also why the human approval step stays.
-- **AI disclosure.** YouTube requires labelling realistic synthetic content. Animated explainers are usually fine, but set the flag correctly on every upload.
-- **"Made for kids" (COPPA).** Marking videos as for kids turns off comments and personalized ads, so they earn less. You must label honestly, and the FTC can fine for mislabelling. Many channels aim at "curious people of all ages" so they aren't strictly kids' content. Choose deliberately.
-- **Upload API audit.** Videos uploaded through a new, unverified API project are locked to private until Google audits the project. Apply early, or upload by hand for the first few weeks.
-- **Music rights.** Use only generators whose license allows commercial YouTube use, or Content ID claims will take the revenue.
-
-## Rough costs
-
-The Claude steps (script, fact-check, animation code, self-review) run on the existing **Claude Code subscription**, locally, through the `claude` CLI in headless mode (`claude -p`). No Anthropic API key and no per-token billing. The trade-off: it runs on the local Mac, and heavy use counts against the subscription's usage limits.
+## Costs
 
 | Item | Cost |
-|------|------|
-| Claude steps (script, fact-check, code, review) | $0 extra: covered by the Claude Code subscription (usage limits apply) |
-| ElevenLabs voice + music | Deferred. Experimental and cost-sensitive, so it is an optional, swappable stub for now (`scripts/providers/`) |
-| Rendering | Free locally, or cents on Lambda |
+|---|---|
+| Script, fact-check, direction, optional frame review | Your Claude Code subscription via `claude -p` (usage limits apply; no API key) |
+| Narration, music, sung chorus, SFX | Free and local (macOS `say`, built-in composer, ffmpeg) |
+| Rendering | Free, local (Remotion; optional Blender) |
+| ElevenLabs voice | Optional and off by default; paid per character if you enable it |
 
-Everything runs fine without ElevenLabs: with the stub provider, videos render silent with beat timing from the spec's `bpm`. Check each provider's current pricing before turning one on.
+## Pitfalls that still apply
 
-## Rollout
+- **YouTube's "inauthentic content" rules.** Mass-produced, near-identical videos get demonetized. The director varies treatments per topic and the human approval step stays.
+- **AI disclosure and "made for kids".** The package metadata leaves both flags unset on purpose: set them deliberately at upload.
+- **Voice licensing.** The default narration uses a macOS system voice; check Apple's terms before commercial publication, or plug in a voice you have rights to.
+- **Upload API audit.** Videos uploaded through an unverified API project stay private until Google audits it. Upload is not automated yet.
 
-- **Week 1:** Build the Remotion template and mascot, then hand-produce 3 videos with Claude to lock in the style.
-- **Week 2:** Automate script -> voice -> music -> render into one command, e.g. `npm run generate -- "black holes" --render`.
-- **Week 3:** Add fact-checking, self-review, and scheduled upload. Start posting.
-- **Ongoing:** Claude reads YouTube Analytics weekly (retention graphs, click-through rate) and adjusts hooks, length and topics. This feedback loop is what makes the channel grow.
+## Repository layout
 
-The fastest way to find out whether this works is to make one real video. The first target is "How does the internet work?" (already in the backlog, with an example spec in `specs/`).
+```
+admin/                  Local admin panel (server.mjs + public/)
+docs/pipeline.md        Stages, files, flags, recovery
+prompts/                script, factcheck, revise, direct
+scripts/pipeline.ts     The pipeline CLI; stages in scripts/stages/
+scripts/audio/          Composer, SFX and WAV helpers
+scripts/providers/      Voice providers (say, elevenlabs, none)
+scripts/blender/        Optional Blender scenes and runner
+specs/                  Storyboards (<slug>.json) and fact-check sources
+src/                    Remotion: schema, timeline, theme, layout, scene systems, components
+assets/manifest.json    Licensed external assets (files live in public/)
+test/                   node --test: schema, timeline, admin server
+```

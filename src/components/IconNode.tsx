@@ -16,7 +16,7 @@ export const IconNode: React.FC<{
   label?: string;
   k?: number;
   hot?: number;
-  labelPos?: "below" | "above";
+  labelPos?: "below" | "above" | "right";
   plate?: boolean;
 }> = ({ icon, p, fmt, x, y, size, label, k = 1, hot = 0, labelPos = "below", plate = true }) => {
   const s = 0.6 + 0.4 * k;
@@ -37,7 +37,11 @@ export const IconNode: React.FC<{
       <div style={{ position: "absolute", inset: size * 0.08 }}>
         <Icon id={icon} p={p} size={size * 0.84} />
       </div>
-      {label ? (
+      {label && labelPos === "right" ? (
+        <div style={{ position: "absolute", left: size * 1.12, top: "50%", transform: "translateY(-50%)" }}>
+          <Label text={label} p={p} fmt={fmt} k={k} size={26} />
+        </div>
+      ) : label ? (
         <div style={{ position: "absolute", left: "50%", [labelPos === "below" ? "top" : "bottom"]: size * 1.08, transform: "translateX(-50%)" }}>
           <Label text={label} p={p} fmt={fmt} k={k} size={26} />
         </div>

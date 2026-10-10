@@ -16,12 +16,17 @@ export const NetworkShot: React.FC<{ ctx: ShotCtx }> = ({ ctx }) => {
   const v = ctx.shot.visual as V;
   const f = useShotFrame(ctx);
   const { p, fmt, content: box } = ctx;
-  const nodeSize = (fmt.vertical ? 150 : 128) * fmt.u * (v.nodes.length > 6 ? 0.85 : 1);
+  // Vertical frames transpose the grid (left-to-right becomes top-to-bottom)
+  // and put labels beside the nodes, so a chain of hops still has room.
+  const along = new Set(v.nodes.map((n) => Math.round(n.x / 6))).size;
+  const nodeSize = Math.min((fmt.vertical ? 150 : v.nodes.length <= 5 ? 160 : 128) * fmt.u * (v.nodes.length > 6 ? 0.85 : 1), ((fmt.vertical ? box.h : box.w) / Math.max(2, along)) * (fmt.vertical ? 0.62 : 0.55));
   const pad = nodeSize * 0.75;
   const pos = Object.fromEntries(
     v.nodes.map((n) => {
       const [gx, gy] = fmt.vertical ? [n.y, n.x] : [n.x, n.y];
-      return [n.id, { x: box.x + pad + (gx / 100) * (box.w - pad * 2), y: box.y + pad * 0.8 + (gy / 100) * (box.h - pad * 1.9) }];
+      return [n.id, fmt.vertical
+        ? { x: box.x + box.w * 0.12 + pad + (gx / 100) * (box.w * 0.58 - pad * 2), y: box.y + pad * 0.6 + (gy / 100) * (box.h - pad * 1.2) }
+        : { x: box.x + pad + (gx / 100) * (box.w - pad * 2), y: box.y + pad * 0.8 + (gy / 100) * (box.h - pad * 1.9) }];
     })
   );
   const links = v.links ?? [];
@@ -71,7 +76,7 @@ export const NetworkShot: React.FC<{ ctx: ShotCtx }> = ({ ctx }) => {
       {v.nodes.map((n, i) => {
         const hits = arrivals[n.id] ?? [];
         const hot = Math.max((v.highlight ?? []).includes(n.id) ? 0.6 + 0.4 * Math.sin(f / 9) ** 2 : 0, ...hits.map((h) => accent(f, h, 14)));
-        return <IconNode key={n.id} icon={n.icon} label={n.label} p={p} fmt={fmt} x={pos[n.id].x} y={pos[n.id].y} size={nodeSize} k={appear(f, nodeAt(i), 16)} hot={hot} />;
+        return <IconNode key={n.id} icon={n.icon} label={n.label} p={p} fmt={fmt} x={pos[n.id].x} y={pos[n.id].y} size={nodeSize} k={appear(f, nodeAt(i), 16)} hot={hot} labelPos={fmt.vertical ? "right" : "below"} />;
       })}
       {packets.map(({ k, x, y, visible, done, color }, i) =>
         visible ? (

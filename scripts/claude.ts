@@ -47,7 +47,7 @@ function runOnce(prompt: string, opts: ClaudeOptions): Promise<string> {
     child.on("close", (code) => {
       clearTimeout(timer);
       const text = `${out}\n${err}`;
-      if (/usage limit|limit reached|rate.?limit.*reset/i.test(text) && code !== 0)
+      if (/usage limit|session limit|limit reached|hit your .*limit|rate.?limit.*reset|api_error_status":429/i.test(text) && code !== 0)
         return reject(new PipelineError("Claude subscription usage limit reached; try again after it resets.", "busy"));
       if (code !== 0) return reject(new PipelineError(`claude -p failed (${code}): ${err.slice(0, 600) || out.slice(0, 600)}`, "external"));
       try {
