@@ -218,3 +218,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Node / Remotion
+node_modules/
+out/
+assets/
+.remotion/
