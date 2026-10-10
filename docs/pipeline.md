@@ -83,6 +83,7 @@ claude -p "$(cat prompts/factcheck.md)" --allowedTools WebSearch,WebFetch --outp
 
 ## 9. Human approval
 
+- Done in the admin panel (`npm run admin`, Review tab): approve, or reject with notes. The decision is written to the topic in `topics/backlog.json`.
 - One notification per video with the MP4, the sources file and the metadata.
 - Approve, or reply with notes that go back into stage 2 or 6.
 

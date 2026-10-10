@@ -20,6 +20,7 @@ scripts/generate.ts     Script-to-video generator (topic -> spec -> render)
 scripts/claude.ts       Runs `claude -p` locally (subscription, no API key)
 scripts/providers/      Swappable music/voice providers (stub by default)
 prompts/                Prompts for the script and fact-check stages
+admin/                  Local web admin panel (npm run admin): backlog, runs, specs, approvals
 ```
 
 ## Quick start
@@ -31,6 +32,23 @@ npm run studio                                      # preview in the browser
 npm run generate -- "How does the internet work?"   # topic -> specs/<slug>.json (needs `claude` CLI logged in)
 npm run generate -- "How does the internet work?" --render   # ...and render out/<slug>.mp4
 ```
+
+## Admin panel
+
+```bash
+npm run admin        # then open http://localhost:4321
+```
+
+A local web panel that runs the whole operation from the browser. It is plain Node with no extra dependencies, listens only on localhost, and runs pipeline jobs by calling `npm run generate` (so Claude stages use your `claude` CLI login, no API key). Jobs run one at a time.
+
+- **Videos:** every backlog topic and spec with its status per stage (script, fact-check, render, approval), and a "waiting for your approval" list.
+- **Backlog:** add, edit, reorder, delete and re-status topics in `topics/backlog.json`.
+- **Run:** full pipeline, script + fact-check only, or render only, with an optional fresh script (the old spec is moved to `out/archive/`). Live logs, render progress and Cancel; logs are also saved in `out/logs/`.
+- **Spec:** edit `specs/<slug>.json` in a form (scenes, beats, BPM) or as raw JSON, validated on save.
+- **Fact-check:** every claim from `specs/<slug>.sources.json` with its verdict, correction and source links; flagged claims first.
+- **Review:** watch the main video and the Short (2x by default), then approve, or reject with notes. The decision is stored on the topic in the backlog (`status` plus `review`).
+
+Start it with the same Node that installed `node_modules` (native arm64 on Apple Silicon, e.g. `/opt/homebrew/bin/npm run admin`); the panel shows a warning if they don't match or if the `claude` CLI isn't found. `ADMIN_PORT` changes the port.
 
 Requires Node 18 or newer. If you see an esbuild "installed for another platform" error, `node_modules` was installed under a different CPU architecture (e.g. Rosetta vs native Apple Silicon). Fix: `rm -rf node_modules package-lock.json && npm install` from a terminal where `node -p process.arch` prints `arm64`. Don't mix an x64 and an arm64 Node on the same checkout.
 

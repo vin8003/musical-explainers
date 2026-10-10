@@ -8,7 +8,8 @@
     "studio": "remotion studio src/index.ts",
     "render": "remotion render src/index.ts Explainer out/video.mp4",
     "generate": "tsx scripts/generate.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "admin": "node admin/server.mjs"
   },
   "dependencies": {
     "@remotion/cli": "4.0.534",

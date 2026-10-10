@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Musical Explainers Admin</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='14' fill='%23ffcc33'/><text x='16' y='22' font-size='16' text-anchor='middle'>♪</text></svg>" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="top">
+    <a class="brand" href="#/videos"><span class="logo">♪</span> Musical Explainers</a>
+    <nav>
+      <a href="#/videos" data-nav="videos">Videos</a>
+      <a href="#/topics" data-nav="topics">Backlog</a>
+      <a href="#/jobs" data-nav="jobs">Jobs <span id="jobBadge" class="badge" hidden></span></a>
+    </nav>
+    <span id="conn" class="conn" title="Live connection to the admin server"></span>
+  </header>
+  <main id="app"></main>
+  <div id="toasts"></div>
+  <script src="app.js"></script>
+</body>
+</html>
