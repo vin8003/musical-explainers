@@ -7,7 +7,7 @@
       "category": "technology",
       "angle": "Your cat video just travelled through an undersea cable in under a second.",
       "chorusIdea": "Packets on the move, hop hop hop!",
-      "status": "queued",
+      "status": "review",
       "priority": 1
     },
     {
@@ -16,7 +16,7 @@
       "category": "biology",
       "angle": "Every cell in your body has its own tiny power plant.",
       "chorusIdea": "Mitochondria, power it up!",
-      "status": "queued",
+      "status": "review",
       "priority": 2
     },
     {
@@ -70,7 +70,7 @@
       "category": "technology",
       "angle": "Your phone finds you by listening to clocks in space.",
       "chorusIdea": "Three, four satellites, here I am!",
-      "status": "queued",
+      "status": "scripting",
       "priority": 8
     }
   ]

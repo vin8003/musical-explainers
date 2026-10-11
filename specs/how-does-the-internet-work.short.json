@@ -1,131 +1,450 @@
 {
   "schemaVersion": 2,
   "slug": "how-does-the-internet-work",
-  "title": "How does the internet work?",
+  "title": "How Does the Internet Actually Work?",
   "format": "short",
   "brief": {
-    "audience": "curious kids and adults who use the internet daily but have never wondered what happens when they hit send",
-    "learningGoal": "Explain that a video is chopped into numbered, separately addressed packets forwarded hop by hop by routers with no master map, which is why the internet keeps working when a link breaks.",
-    "hook": "You hit send, and your video feels like one unbroken stream. It isn't."
+    "audience": "curious kids and adults who use the internet daily but have never wondered what actually happens when they hit send",
+    "learningGoal": "The viewer can explain that a video is split into addressed, numbered packets that routers forward hop by hop with no reserved line, and that missing packets get resent until the file is whole.",
+    "hook": "Your video isn't sent down one line like a phone call — it's broken into thousands of pieces that each find their own way there."
   },
   "world": "night",
   "direction": {
-    "status": "draft",
-    "at": "2026-10-10T22:47:04.836Z",
-    "by": "script"
+    "status": "directed",
+    "at": "2026-10-11T04:10:58.396Z",
+    "by": "claude"
   },
   "music": {
     "bpm": 112,
-    "key": "E",
-    "mode": "minor",
+    "key": "G",
+    "mode": "major",
     "mood": "driving"
   },
   "shots": [
     {
-      "id": "hook-shatter",
+      "id": "hook-no-line",
       "section": "intro",
-      "purpose": "hook-continuous-stream-myth: Challenge the one-stream assumption and pose the question with a payoff.",
-      "narration": "You hit send on a video. It feels like one unbroken stream across the world. It isn't. So how does it arrive intact, even if a cable breaks?",
-      "headline": "Not one stream",
-      "claims": [
-        "packet-switching-basic"
-      ],
-      "visual": {
-        "type": "kinetic",
-        "style": "stack",
-        "lines": [
-          "Not one stream"
-        ]
-      }
-    },
-    {
-      "id": "chop-and-address",
-      "section": "verse",
-      "purpose": "chop-into-packets: Teach slicing, addressing and numbering before they are needed.",
-      "narration": "Your device slices the video into thousands of small packets. Each gets its own from and to address, and a sequence number. Each packet is independent.",
-      "headline": "Thousands of packets",
+      "purpose": "hook-no-line: Break the phone-call myth and pose the question the video will answer.",
+      "narration": "A video becomes thousands of packets, not one line. How does it arrive intact?",
       "claims": [
         "packet-switching-basic",
-        "packet-header-addresses",
-        "host-splits-data",
-        "tcp-sequence-numbers",
-        "datagram-independence"
+        "datagram-independence",
+        "host-splits-data"
       ],
       "visual": {
-        "type": "kinetic",
-        "style": "stack",
-        "lines": [
-          "Thousands of packets"
+        "type": "comparison",
+        "left": {
+          "title": "Phone Call",
+          "icon": "phone",
+          "points": [
+            "One reserved line",
+            "Nothing else can share it"
+          ]
+        },
+        "right": {
+          "title": "Your Video",
+          "icon": "video",
+          "points": [
+            "Thousands of packets",
+            "Each travels separately"
+          ]
+        }
+      },
+      "headline": "Thousands of Packets",
+      "camera": {
+        "move": "push-in"
+      },
+      "mascot": {
+        "mood": "thinking",
+        "position": "left"
+      },
+      "accents": [
+        {
+          "beat": 0,
+          "sfx": "whoosh"
+        },
+        {
+          "beat": 2,
+          "sfx": "pop"
+        }
+      ]
+    },
+    {
+      "id": "addressed-postcards",
+      "section": "verse",
+      "purpose": "addressed-postcards: Show each packet carries its own addresses, and introduce TCP's numbering.",
+      "narration": "Each packet is a postcard with from and to addresses. TCP adds a number.",
+      "claims": [
+        "packet-header-addresses",
+        "packet-switching-basic",
+        "tcp-sequence-numbers"
+      ],
+      "visual": {
+        "type": "anatomy",
+        "subject": "packet",
+        "label": "Packet",
+        "callouts": [
+          {
+            "label": "From 203.0.113.5",
+            "anchor": "from-address"
+          },
+          {
+            "label": "To 198.51.100.7",
+            "anchor": "to-address"
+          },
+          {
+            "label": "Seq #1",
+            "anchor": "sequence"
+          }
         ]
-      }
+      },
+      "headline": "Address and Number",
+      "camera": {
+        "move": "static"
+      },
+      "accents": [
+        {
+          "beat": 0,
+          "sfx": "blip"
+        },
+        {
+          "beat": 2,
+          "sfx": "blip"
+        }
+      ]
     },
     {
       "id": "hop-by-hop",
       "section": "verse",
-      "purpose": "hop-by-hop-no-map: Explain hop-by-hop forwarding with the postcard image.",
-      "narration": "Think of postcards and sorting offices. Each router reads the address, checks its short list, and hands the packet to the next one. None of them knows the whole route.",
-      "headline": "Sorting offices",
+      "purpose": "hop-by-hop: Carry the postcard analogy into routers reading only the destination and forwarding locally.",
+      "narration": "Each router reads the destination, checks its list, forwards it. No router knows the whole route.",
       "claims": [
         "routers-forward-by-address",
-        "no-global-routing-map",
-        "datagram-independence",
-        "packet-header-addresses"
-      ],
-      "visual": {
-        "type": "kinetic",
-        "style": "stack",
-        "lines": [
-          "Sorting offices"
-        ]
-      }
-    },
-    {
-      "id": "chorus-packets",
-      "section": "chorus",
-      "purpose": "hop-by-hop-no-map: Sing the mechanism.",
-      "lyric": "Chopped up. Addressed. Passed hand to hand.",
-      "claims": [
-        "packet-switching-basic",
-        "routers-forward-by-address"
-      ],
-      "visual": {
-        "type": "kinetic",
-        "style": "punch"
-      }
-    },
-    {
-      "id": "resilience",
-      "section": "outro",
-      "purpose": "resolution-reassembly-resilience: Resolve: rerouting around breaks and reordering on arrival.",
-      "narration": "If a link breaks, routers update their lists and packets can detour. At the end, the numbers put them back in order. No single path or map to break.",
-      "headline": "No single path to break",
-      "claims": [
-        "packets-can-reroute-on-change",
-        "tcp-sequence-numbers",
         "no-global-routing-map"
       ],
       "visual": {
-        "type": "kinetic",
-        "style": "stack",
-        "lines": [
-          "No single path to break"
+        "type": "network",
+        "nodes": [
+          {
+            "id": "you",
+            "icon": "laptop",
+            "label": "You",
+            "x": 8,
+            "y": 50
+          },
+          {
+            "id": "router-a",
+            "icon": "router",
+            "label": "Router",
+            "x": 28,
+            "y": 50
+          },
+          {
+            "id": "router-b",
+            "icon": "router",
+            "label": "Router",
+            "x": 48,
+            "y": 50
+          },
+          {
+            "id": "router-c",
+            "icon": "router",
+            "label": "Router",
+            "x": 68,
+            "y": 50
+          },
+          {
+            "id": "server",
+            "icon": "server",
+            "label": "Server",
+            "x": 88,
+            "y": 50
+          }
+        ],
+        "links": [
+          {
+            "from": "you",
+            "to": "router-a",
+            "style": "cable"
+          },
+          {
+            "from": "router-a",
+            "to": "router-b",
+            "style": "cable"
+          },
+          {
+            "from": "router-b",
+            "to": "router-c",
+            "style": "cable"
+          },
+          {
+            "from": "router-c",
+            "to": "server",
+            "style": "cable"
+          }
+        ],
+        "packets": [
+          {
+            "route": [
+              "you",
+              "router-a",
+              "router-b",
+              "router-c",
+              "server"
+            ],
+            "label": "Packet 12",
+            "color": "primary",
+            "startBeat": 0,
+            "beatsPerHop": 2
+          },
+          {
+            "route": [
+              "you",
+              "router-a",
+              "router-b",
+              "router-c",
+              "server"
+            ],
+            "label": "Packet 13",
+            "color": "secondary",
+            "startBeat": 2,
+            "beatsPerHop": 2
+          }
         ]
-      }
+      },
+      "headline": "One Hop at a Time",
+      "camera": {
+        "move": "pan-right"
+      },
+      "accents": [
+        {
+          "beat": 0,
+          "sfx": "blip"
+        }
+      ],
+      "minBars": 2
+    },
+    {
+      "id": "reroute-boundary",
+      "section": "bridge",
+      "purpose": "reroute-boundary: Clarify paths stay fixed until something changes, correcting the per-packet-racing myth.",
+      "narration": "Normally packets follow the same path. If a link fails, later packets detour, overtaking earlier ones.",
+      "claims": [
+        "packets-can-reroute-on-change"
+      ],
+      "visual": {
+        "type": "network",
+        "nodes": [
+          {
+            "id": "you",
+            "icon": "laptop",
+            "label": "You",
+            "x": 8,
+            "y": 50
+          },
+          {
+            "id": "router-a",
+            "icon": "router",
+            "label": "Router",
+            "x": 28,
+            "y": 50
+          },
+          {
+            "id": "router-b",
+            "icon": "router",
+            "label": "Router",
+            "x": 48,
+            "y": 50
+          },
+          {
+            "id": "router-c",
+            "icon": "router",
+            "label": "Router",
+            "x": 68,
+            "y": 50
+          },
+          {
+            "id": "router-d",
+            "icon": "router",
+            "label": "Router",
+            "x": 68,
+            "y": 25
+          },
+          {
+            "id": "server",
+            "icon": "server",
+            "label": "Server",
+            "x": 88,
+            "y": 50
+          }
+        ],
+        "links": [
+          {
+            "from": "you",
+            "to": "router-a",
+            "style": "cable"
+          },
+          {
+            "from": "router-a",
+            "to": "router-b",
+            "style": "cable"
+          },
+          {
+            "from": "router-b",
+            "to": "router-c",
+            "style": "dashed"
+          },
+          {
+            "from": "router-b",
+            "to": "router-d",
+            "style": "cable"
+          },
+          {
+            "from": "router-d",
+            "to": "server",
+            "style": "cable"
+          },
+          {
+            "from": "router-c",
+            "to": "server",
+            "style": "cable"
+          }
+        ],
+        "packets": [
+          {
+            "route": [
+              "you",
+              "router-a",
+              "router-b",
+              "router-d",
+              "server"
+            ],
+            "label": "Packet 41",
+            "color": "warm",
+            "startBeat": 0,
+            "beatsPerHop": 2
+          }
+        ],
+        "highlight": [
+          "router-d"
+        ]
+      },
+      "headline": "Routes Change Rarely",
+      "camera": {
+        "move": "pull-out"
+      },
+      "transition": "wipe",
+      "accents": [
+        {
+          "beat": 0,
+          "sfx": "hit"
+        },
+        {
+          "beat": 1,
+          "sfx": "whoosh"
+        }
+      ],
+      "minBars": 2
+    },
+    {
+      "id": "reassemble-resolution",
+      "section": "outro",
+      "purpose": "reassemble-resolution: Show how the receiver detects and fills gaps using the numbers from TCP.",
+      "narration": "The receiver confirms 'got up to forty.' Unconfirmed numbers get resent, filling gaps.",
+      "claims": [
+        "tcp-sequence-numbers",
+        "tcp-ack-retransmit"
+      ],
+      "visual": {
+        "type": "packetize",
+        "mode": "reassemble",
+        "source": {
+          "icon": "video",
+          "label": "Video"
+        },
+        "destination": {
+          "icon": "laptop",
+          "label": "You"
+        },
+        "count": 8,
+        "packetLabel": "seq"
+      },
+      "headline": "Numbers Restore Order",
+      "camera": {
+        "move": "push-in"
+      },
+      "accents": [
+        {
+          "beat": 0,
+          "sfx": "blip"
+        },
+        {
+          "beat": 2,
+          "sfx": "riser"
+        },
+        {
+          "beat": 3,
+          "sfx": "chime"
+        }
+      ],
+      "minBars": 2
+    },
+    {
+      "id": "chorus-rebuild",
+      "section": "chorus",
+      "purpose": "reassemble-resolution: Sing the full mechanism as the closing mental model: no single line has to survive.",
+      "lyric": "Address it, number it, send it, rebuild it.",
+      "claims": [
+        "packet-switching-basic",
+        "datagram-independence",
+        "tcp-sequence-numbers"
+      ],
+      "visual": {
+        "type": "kinetic",
+        "style": "punch",
+        "emphasis": [
+          "Address",
+          "number",
+          "send",
+          "rebuild"
+        ]
+      },
+      "camera": {
+        "move": "rise"
+      },
+      "mascot": {
+        "mood": "happy",
+        "position": "right"
+      },
+      "accents": [
+        {
+          "beat": 0,
+          "sfx": "hit"
+        },
+        {
+          "beat": 2,
+          "sfx": "hit"
+        },
+        {
+          "beat": 3,
+          "sfx": "chime"
+        }
+      ]
     }
   ],
   "editorial": {
-    "outlineHash": "8c4dfcf0a35c5e4a",
+    "outlineHash": "f25619366c357e62",
     "researchHash": "92ef3a29598b410f",
     "durationKey": "short:45/30-60@156wpm±0.15",
     "promptVersion": 2,
     "estimate": {
-      "seconds": 55.7,
-      "spokenWords": 113,
-      "sungWords": 7,
+      "seconds": 42.9,
+      "spokenWords": 73,
+      "sungWords": 8,
       "wordsPerMinute": 156,
-      "verdict": "off-target",
-      "message": "0:56 is 24% from the 0:45 target (tolerance 15%)"
+      "verdict": "ok",
+      "message": "0:43 (target 0:45, allowed 0:30-1:00)"
     },
-    "at": "2026-10-10T22:47:04.837Z"
+    "at": "2026-10-11T03:57:20.962Z"
   }
 }

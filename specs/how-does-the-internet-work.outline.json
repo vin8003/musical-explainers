@@ -180,74 +180,72 @@
       "promptVersion": 1
     },
     "short": {
-      "openingQuestion": "When you hit send on a video, what actually happens to get it across the world and onto someone else's screen?",
-      "understandingChange": "Before: the viewer pictures their video traveling as one unbroken stream down a dedicated line, like a phone call. After: they understand it's chopped into separately addressed packets that each get forwarded hop-by-hop by routers with no map of the whole internet, which is exactly why the system keeps working even when a piece of the network breaks.",
+      "openingQuestion": "When you hit send on a video, how does it cross the world without a dedicated line, and still arrive perfectly?",
+      "understandingChange": "Before: a video travels as one stream down a reserved line. After: it's chopped into numbered, addressed packets that routers forward hop by hop, and the receiver reorders them and asks for resends.",
       "structure": "myth-busting",
       "prerequisites": [
-        "packet: a small chunk of data traveling with its own address header",
-        "IP address: the fixed 'to' and 'from' info every packet carries",
-        "router: a device that reads a packet's destination and passes it to the next machine toward it"
+        "packet",
+        "router"
       ],
       "beats": [
         {
-          "id": "hook-continuous-stream-myth",
+          "id": "hook-no-line",
           "role": "hook",
-          "point": "Challenge the viewer's default assumption: a sent video feels like one unbroken stream flowing straight to its destination, but that's not what happens.",
-          "claimIds": [],
-          "seconds": 7,
-          "visual": "A video icon shown as a single solid line shooting across a world map, then the line suddenly shatters into dozens of small glowing fragments mid-flight."
-        },
-        {
-          "id": "chop-into-packets",
-          "role": "setup",
-          "point": "Before it ever leaves the device, the video is sliced into many small packets, and each one is stamped with its own 'from' and 'to' address.",
+          "point": "Your video doesn't travel as one stream down a reserved line like a phone call; it gets chopped into thousands of separate pieces.",
           "claimIds": [
             "packet-switching-basic",
-            "packet-header-addresses",
+            "datagram-independence",
             "host-splits-data"
           ],
           "seconds": 9,
-          "visual": "Video file visually dicing into a grid of small labeled tiles, each tile getting a little address tag stamped on it."
+          "visual": "A phone-call wire labeled 'myth' shatters into thousands of small glowing packets."
         },
         {
-          "id": "hop-by-hop-no-map",
+          "id": "addressed-postcards",
           "role": "mechanism",
-          "point": "Each packet then travels alone: every router it meets checks only the destination address against its own local list and hands it to the next router — no router anywhere has a map of the whole internet.",
+          "point": "Each packet is like a postcard: its header carries its own source and destination address.",
+          "claimIds": [
+            "packet-header-addresses",
+            "packet-switching-basic"
+          ],
+          "seconds": 9,
+          "visual": "Packets shown as postcards stamped FROM and TO."
+        },
+        {
+          "id": "hop-by-hop",
+          "role": "example",
+          "point": "Routers read only the destination address and pass each packet to the next hop using a local table. No router holds a map of the whole internet.",
           "claimIds": [
             "routers-forward-by-address",
-            "no-global-routing-map",
-            "datagram-independence"
-          ],
-          "seconds": 10,
-          "visual": "A chain of router icons lighting up one at a time as a single labeled tile passes hand-to-hand; each router shows only a tiny local list, not a global map."
-        },
-        {
-          "id": "postcards-analogy",
-          "role": "example",
-          "point": "It's like mailing a letter as dozens of separate postcards through a chain of sorting offices — each office only knows the next office for that address, not the whole route.",
-          "claimIds": [
-            "packet-switching-basic",
-            "packet-header-addresses",
             "no-global-routing-map"
           ],
-          "seconds": 8,
-          "visual": "Postcards with address labels sliding through a row of small sorting-office counters, each counter stamping and pushing the card to the next counter."
+          "seconds": 11,
+          "visual": "Postcards pass through a chain of sorting-office nodes, each pointing only to its neighbor."
         },
         {
-          "id": "resolution-reassembly-resilience",
-          "role": "resolution",
-          "point": "Because packets aren't locked to one path, they can scatter across different routes — especially around a broken link — and still get renumbered back into perfect order on arrival, which is why the video still lands intact even when part of the network fails.",
+          "id": "reroute-boundary",
+          "role": "complication",
+          "point": "Paths mostly stay put until something changes, like a failed link. Then packets can take a different route, which is why the network survives breakage.",
           "claimIds": [
-            "packets-can-reroute-on-change",
-            "tcp-sequence-numbers",
-            "datagram-independence"
+            "packets-can-reroute-on-change"
           ],
-          "seconds": 10,
-          "visual": "The scattered tiles taking visibly different squiggly paths across the map, including one dodging a broken link, then snapping back together in correct numbered order on the receiving screen."
+          "seconds": 8,
+          "visual": "One link flashes red and the packets curve around it."
+        },
+        {
+          "id": "reassemble-resolution",
+          "role": "resolution",
+          "point": "At the far end, TCP's sequence numbers restore the order and any missing piece is re-requested, so a messy network delivers a perfect video.",
+          "claimIds": [
+            "tcp-sequence-numbers",
+            "tcp-ack-retransmit"
+          ],
+          "seconds": 8,
+          "visual": "Numbered packets snap into order, and a gap triggers a 'resend' pulse."
         }
       ],
       "keyExample": {
-        "description": "Mailing a long letter as dozens of separately addressed postcards through a chain of sorting offices, where each office only knows the next office for that address, not the full route to the destination.",
+        "description": "A long letter mailed as dozens of numbered postcards through a chain of sorting offices, each knowing only the next office.",
         "claimIds": [
           "packet-switching-basic",
           "packet-header-addresses",
@@ -255,36 +253,32 @@
         ]
       },
       "complication": {
-        "description": "It's tempting to picture each router as actively scanning for 'the fastest, least-busy path' for every packet in real time, like a GPS rerouting around traffic. In ordinary operation it doesn't: packets to the same destination keep following the same path from the local table until something actually changes, such as a failed link — that changed path is what lets the video survive a break, not constant real-time racing.",
+        "description": "Packets don't pick the fastest path in real time; routes change when a link fails or traffic is deliberately split, and TCP fixes any resulting disorder.",
         "claimIds": [
           "packets-can-reroute-on-change",
-          "no-global-routing-map"
+          "tcp-handles-loss-duplication-reorder"
         ]
       },
-      "conclusion": "Your video was never one stream — it was always many independently addressed packets, forwarded one hop at a time with no master map, which is precisely why the internet shrugs off broken links instead of going down with them.",
+      "conclusion": "The internet doesn't send your video down one line. It sends many addressed, numbered pieces that are forwarded independently and reassembled, which is why it keeps working when parts break.",
       "longFormOnly": [
-        "The history of packet switching (Baran, Davies, Kleinrock) and ARPANET's 1969 launch",
-        "Why circuit switching from the telephone network was rejected as a model for computer traffic",
-        "The IP/TCP layering split in detail, including IP fragmentation mid-route",
-        "TCP's acknowledgment-and-timeout retransmission mechanics, not just sequence numbering",
-        "The internet as a voluntary 'network of networks' with no central owner, and stateless gateways",
-        "The physical layer: fiber-optic light pulses at ~2/3 lightspeed, submarine cable counts, and how much of international traffic they actually carry",
-        "The live-video-call caveat: real-time calls often use loss-tolerant UDP-based delivery instead of TCP's resend-everything approach"
+        "Circuit switching history and the packet-switching pioneers",
+        "IP fragmentation",
+        "Network of networks and who runs the internet",
+        "Fiber-optic cables, light speed and submarine cables",
+        "Traceroute demo",
+        "IP versus TCP layering in depth"
       ],
-      "coreInsight": "Your video doesn't travel as one continuous stream — it's chopped into separately addressed packets that can take different paths and only get reassembled once they all arrive, which is exactly why the internet keeps working even when parts of it break.",
-      "chorus": {
-        "line": "Chopped up. Addressed. Passed hand to hand.",
-        "reinforces": "The core mechanism: data is split into independently addressed packets and forwarded hop-by-hop rather than sent as one continuous stream (packet-switching-basic, routers-forward-by-address)."
-      },
+      "coreInsight": "Your video is chopped into separately addressed, numbered packets that are forwarded hop by hop and reassembled at the end, so no single path or line has to survive.",
+      "chorus": null,
       "fit": {
         "verdict": "fits",
-        "note": "Beats total 44 seconds, inside the 30-60s range and within 15% of the 45s target; word pacing stays under the 32-word per-shot limit throughout."
+        "note": "Five beats total 45 s with one core insight. The short stands alone and leaves out the history, the cables and the layering detail."
       },
       "format": "short",
       "inputHash": "25665935c3fc9117",
       "researchHash": "92ef3a29598b410f",
       "durationKey": "short:45/30-60@156wpm±0.15",
-      "at": "2026-10-10T18:11:48.846Z",
+      "at": "2026-10-11T03:41:43.722Z",
       "promptVersion": 1
     }
   }
