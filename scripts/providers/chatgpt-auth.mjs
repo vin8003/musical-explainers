@@ -1,7 +1,7 @@
 // Official Sign in with ChatGPT plan-usage flow for this locally hosted app.
 // OAuth credentials live in the operating-system credential manager, never in
 // config/settings.json, the browser, pipeline environment, or logs.
-import { randomBytes, randomUUID, createHash } from "node:crypto";
+import { randomBytes, randomUUID, createHash, webcrypto } from "node:crypto";
 import { createServer } from "node:http";
 import { spawn } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -9,6 +9,10 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import keytar from "keytar";
 import { createRemoteJWKSet, jwtVerify } from "jose";
+
+// jose uses the Web Crypto global. Node 18 exposes webcrypto from node:crypto
+// but does not consistently install it on globalThis for ESM files.
+if (!globalThis.crypto) Object.defineProperty(globalThis, "crypto", { value: webcrypto, configurable: true });
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const DATA = process.env.DATA_ROOT ? resolve(process.env.DATA_ROOT) : ROOT;

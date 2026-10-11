@@ -50,7 +50,11 @@ test("ChatGPT auth status distinguishes disconnected, consent-required, reauth a
     import { createHash } from "node:crypto";
     import { resolve } from "node:path";
     import keytar from "keytar";
+    import { SignJWT, jwtVerify } from "jose";
     import { connectionStatus } from "./scripts/providers/chatgpt-auth.mjs";
+    if (!globalThis.crypto?.subtle) throw new Error("Node ESM Web Crypto is unavailable");
+    const token = await new SignJWT({ ok: true }).setProtectedHeader({ alg: "HS256" }).sign(new Uint8Array(32).fill(7));
+    if (!(await jwtVerify(token, new Uint8Array(32).fill(7))).payload.ok) throw new Error("jose Web Crypto verification failed");
     const service = "musical-explainers:chatgpt-plan:" + createHash("sha256").update(resolve(process.env.DATA_ROOT)).digest("hex").slice(0, 16);
     const account = "primary";
     const read = async () => {
