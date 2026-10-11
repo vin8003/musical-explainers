@@ -24,7 +24,8 @@ import { readFileSync } from "node:fs";
 import { lock, paths, PipelineError, readJson } from "./core/files";
 import { fmt, FORMAT_LABEL, wordsToTarget } from "../src/schema/settings.mjs";
 import { runSettings } from "./core/settings";
-import { emit, setStage, Stage, STAGES, updateState } from "./core/state";
+import { emit, loadState, setStage, Stage, STAGES, updateState } from "./core/state";
+import { newRunId, runSummaryLine, setUsageContext, stageSummaryLine } from "./core/usage";
 import { computeStatus } from "./core/status";
 import { assetsStage } from "./stages/assets";
 import { audioStage, DurationError } from "./stages/audio";
@@ -73,6 +74,7 @@ function resolveTopic(target: string): { slug: string; title: string; topic?: To
 
 async function runStage(stage: Stage, ctx: RunCtx) {
   const started = new Date().toISOString();
+  setUsageContext({ stage });
   console.log(`\n== ${stage} ==`);
   emit({ event: "stage", stage, status: "running" });
   setStage(ctx.slug, stage, { status: "running", startedAt: started, endedAt: undefined, error: null });
@@ -80,6 +82,7 @@ async function runStage(stage: Stage, ctx: RunCtx) {
     const r = await RUNNERS[stage](ctx);
     setStage(ctx.slug, stage, { status: "done", endedAt: new Date().toISOString(), summary: r.summary, warnings: r.warnings ?? [], inputHash: r.inputHash, error: null });
     console.log(`  ${r.cached ? "cached" : "done"}: ${r.summary}`);
+    console.log(`  usage: ${stageSummaryLine(stage, started)}`);
     for (const w of r.warnings ?? []) console.log(`  warning: ${w}`);
     emit({ event: "stage", stage, status: "done", summary: r.summary, cached: r.cached });
     return r;
@@ -110,6 +113,12 @@ async function main() {
     console.log(JSON.stringify({ slug, stages: s.stages, problems: s.problems, lint: s.lint, formats: s.formats }, null, 2));
     return;
   }
+  // Usage run: a budget stop or failure keeps the run (resume restores its totals from the ledger);
+  // --fresh or a finished run starts a new one with new counters.
+  const prior = loadState(slug).usage;
+  const usageRun = !prior || prior.completedAt || flags.fresh ? { runId: newRunId(), startedAt: new Date().toISOString() } : prior;
+  updateState(slug, (s) => { s.usage = { runId: usageRun.runId, startedAt: usageRun.startedAt, stop: null }; });
+  setUsageContext({ slug, runId: usageRun.runId, budgets: snap.settings.budgets });
   const ctx: RunCtx = {
     slug,
     title,
@@ -155,6 +164,7 @@ async function main() {
   const to = STAGES.indexOf(toName);
   if (from < 0 || to < 0) throw new PipelineError(`--from/--to must be one of ${STAGES.join(", ")}`, "invalid");
 
+  let finished = false;
   try {
     if (single) {
       currentStage = single;
@@ -163,6 +173,7 @@ async function main() {
         const after = computeStatus(slug, { settings: ctx.settings, formats: ctx.formats, title, topic }).stages.qa;
         if (after.status === "failed") throw new PipelineError(`QA failed: ${after.reason}`, "quality", "Open the Quality tab to see what failed.");
       }
+      finished = true;
       return;
     }
     // Continue mode: run what's missing or stale, in order; rescan after each
@@ -225,7 +236,10 @@ async function main() {
       }
     }
     console.log(`\nAll requested stages are up to date.`);
+    finished = true;
   } finally {
+    console.log(`\n[usage] this run: ${runSummaryLine()}`);
+    if (finished) updateState(slug, (s) => { if (s.usage) s.usage.completedAt = new Date().toISOString(); });
     currentStage = null;
     release();
   }

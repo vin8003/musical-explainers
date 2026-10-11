@@ -44,6 +44,8 @@ export type ProductionState = {
   run?: { at: string; settings: unknown; source: string; formats: string[]; pid: number } | null;
   /** Last stage that completed successfully, for "resume from here". */
   checkpoint?: Stage | null;
+  /** Usage run (see scripts/core/usage.ts). A budget stop is kept in `stop` so it can be inspected after the process exits. */
+  usage?: { runId: string; startedAt: string; completedAt?: string; stop?: { at: string; stage: string; blocks: unknown[]; message: string } | null };
   updatedAt?: string;
 };
 

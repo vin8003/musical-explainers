@@ -5,6 +5,12 @@
 import { spawn } from "node:child_process";
 import { PipelineError } from "./core/files";
 import { runSettings } from "./core/settings";
+import { applyPatch, extractPatch, fieldRepairPrompt, localRepairJson, planFieldRepair } from "./core/repair";
+import { amendCall, finishCall, getUsageContext, reserveCall } from "./core/usage";
+import type { Reservation, UsageRecord } from "./core/usage";
+import { normalizeCliUsage, unknownUsage } from "../src/schema/usage.mjs";
+import { MAX_REPAIR_ATTEMPTS_HARD } from "../src/schema/settings.mjs";
+import { randomUUID } from "node:crypto";
 import { isAllowedModel, EFFORT_LEVELS } from "../src/schema/settings.mjs";
 import type { ModelChoice, ModelStepId } from "../src/schema/settings.mjs";
 
@@ -19,6 +25,28 @@ export type ClaudeOptions = {
   /** Milliseconds before the call is abandoned (default 15 min, CLAUDE_TIMEOUT_MS). */
   timeoutMs?: number;
   label?: string;
+  /** How this call is classified in the usage ledger (default "generation"). */
+  callKind?: "generation" | "regeneration";
+  /** Why, when a call deliberately repeats a large prompt (e.g. "length miss"). Recorded in the ledger. */
+  reason?: string;
+};
+
+/** Extra options for claudeJson. */
+export type JsonOptions<T> = ClaudeOptions & {
+  /** Problems with the parsed value (empty = valid). Always re-run on the whole object after a repair. */
+  check?: (v: T) => string[];
+  /**
+   * Allow repairing only the failing fields (the schema's fields are independent
+   * and the validator names them). Off by default: a caller opts in after
+   * checking its validator. `context` adds compact reference data to the prompt.
+   */
+  fieldRepair?: boolean | { context?: (v: T) => string; hint?: string };
+  /**
+   * Full-object repair resends the original prompt (default). Set false for
+   * prompts that are large or use tools (research): the repair then sends
+   * only the previous object and the problems, with no tools.
+   */
+  repairResendsPrompt?: boolean;
 };
 
 function cleanEnv() {
@@ -54,53 +82,75 @@ export function resolveModel(opts: Pick<ClaudeOptions, "step" | "model" | "effor
   return { model, effort: effort as ModelChoice["effort"] };
 }
 
-function runOnce(prompt: string, opts: ClaudeOptions): Promise<string> {
-  const args = ["-p", "--output-format", "json"];
-  const { model, effort } = resolveModel(opts);
-  args.push("--model", model, "--effort", effort);
+type RunResult = { ok: boolean; text?: string; envelope: unknown; exitCode: number | null; error?: { category: string; message: string } };
+
+/** Runs the CLI once. Never rejects for CLI failures: the caller records the call (and any usage the CLI reported) first. */
+function runOnce(prompt: string, opts: ClaudeOptions, model: string, effort: string): Promise<RunResult> {
+  const args = ["-p", "--output-format", "json", "--model", model, "--effort", effort];
   console.log(`  [${opts.step ?? opts.label ?? "claude"}: ${model}, ${effort} effort]`);
   if (opts.allowedTools?.length) args.push("--allowedTools", opts.allowedTools.join(","));
   const timeoutMs = opts.timeoutMs ?? Number(process.env.CLAUDE_TIMEOUT_MS ?? 15 * 60 * 1000);
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     const child = spawn(process.env.CLAUDE_BIN ?? "claude", args, { env: cleanEnv(), stdio: ["pipe", "pipe", "pipe"] });
     let out = "", err = "";
+    let settled = false;
+    const done = (r: RunResult) => { if (!settled) { settled = true; clearTimeout(timer); resolve(r); } };
     const timer = setTimeout(() => {
       child.kill("SIGTERM");
-      reject(new PipelineError(`claude -p timed out after ${Math.round(timeoutMs / 1000)}s`, "external"));
+      done({ ok: false, envelope: null, exitCode: null, error: { category: "timeout", message: `claude -p timed out after ${Math.round(timeoutMs / 1000)}s` } });
     }, timeoutMs);
     child.stdout.on("data", (b) => (out += b));
     child.stderr.on("data", (b) => (err += b));
-    child.on("error", (e) => {
-      clearTimeout(timer);
-      reject(new PipelineError(`Could not run the claude CLI (is it on PATH, or set CLAUDE_BIN, and run claude once to log in?): ${e.message}`, "missing"));
-    });
+    child.on("error", (e) => done({ ok: false, envelope: null, exitCode: null, error: { category: "missing", message: `Could not run the claude CLI (is it on PATH, or set CLAUDE_BIN, and run claude once to log in?): ${e.message}` } }));
     child.on("close", (code) => {
-      clearTimeout(timer);
+      // The CLI may print its structured result even when it fails (usage included): keep it.
+      let envelope: unknown = null;
+      try { envelope = JSON.parse(out); } catch { /* not JSON */ }
       const text = `${out}\n${err}`;
       if (/usage limit|session limit|limit reached|hit your .*limit|rate.?limit.*reset|api_error_status":429/i.test(text) && code !== 0)
-        return reject(new PipelineError("Claude subscription usage limit reached; try again after it resets.", "busy"));
-      if (code !== 0) return reject(new PipelineError(`claude -p failed (${code}): ${err.slice(0, 600) || out.slice(0, 600)}`, "external"));
-      try {
-        const parsed = JSON.parse(out) as { result?: string; is_error?: boolean };
-        if (parsed.is_error || typeof parsed.result !== "string") return reject(new PipelineError(`claude -p returned an error: ${out.slice(0, 600)}`, "external"));
-        resolve(parsed.result);
-      } catch {
-        reject(new PipelineError(`claude -p printed something that isn't JSON: ${out.slice(0, 300)}`, "external"));
-      }
+        return done({ ok: false, envelope, exitCode: code, error: { category: "usage-limit", message: "Claude subscription usage limit reached; try again after it resets." } });
+      if (code !== 0) return done({ ok: false, envelope, exitCode: code, error: { category: "process", message: `claude -p failed (${code}): ${err.slice(0, 600) || out.slice(0, 600)}` } });
+      const parsed = envelope as { result?: string; is_error?: boolean } | null;
+      if (!parsed) return done({ ok: false, envelope, exitCode: code, error: { category: "envelope", message: `claude -p printed something that isn't JSON: ${out.slice(0, 300)}` } });
+      if (parsed.is_error || typeof parsed.result !== "string") return done({ ok: false, envelope, exitCode: code, error: { category: "cli-error", message: `claude -p returned an error: ${out.slice(0, 600)}` } });
+      done({ ok: true, text: parsed.result, envelope, exitCode: code });
     });
     child.stdin.end(prompt);
   });
 }
 
-export async function claudeText(prompt: string, opts: ClaudeOptions = {}): Promise<string> {
-  for (let attempt = 0; ; attempt++) {
-    try {
-      return await runOnce(prompt, opts);
-    } catch (e) {
-      if (!(e instanceof PipelineError) || e.kind !== "external" || attempt >= 1) throw e;
-      console.log(`  claude call${opts.label ? ` (${opts.label})` : ""} failed: ${e.message.split("\n")[0].slice(0, 200)}; retrying once`);
-    }
+type Meta = { operationId: string; attempt: number; kind: string; repair: boolean; reason?: string };
+type Called = { text: string; row: UsageRecord };
+
+/** One budgeted, recorded Claude call. Throws BudgetExceededError before launching if a limit is reached. */
+async function invoke(prompt: string, opts: ClaudeOptions, meta: Meta): Promise<Called> {
+  const { model, effort } = resolveModel(opts);
+  const res: Reservation = reserveCall({ operation: opts.label ?? opts.step ?? "claude", operationId: meta.operationId, step: opts.step, requestedModel: model, effort, attempt: meta.attempt, repair: meta.repair, kind: meta.kind, reason: meta.reason });
+  const r = await runOnce(prompt, opts, model, effort);
+  const usage = r.envelope ? normalizeCliUsage(r.envelope) : unknownUsage();
+  const row = finishCall(res, { status: r.ok ? "ok" : "failed", usage, model: usage.modelUsed, exitCode: r.exitCode, error: r.error ? { category: r.error.category, message: r.error.message.slice(0, 200) } : null });
+  if (!r.ok) {
+    const c = r.error!.category;
+    throw new PipelineError(r.error!.message, c === "usage-limit" ? "busy" : c === "missing" ? "missing" : "external");
   }
+  return { text: r.text!, row };
+}
+
+/** invoke + at most one retry of a transient CLI failure (the retry is its own ledger row). */
+async function invokeWithRetry(prompt: string, opts: ClaudeOptions, meta: Meta): Promise<Called> {
+  try {
+    return await invoke(prompt, opts, meta);
+  } catch (e) {
+    if (!(e instanceof PipelineError) || e.kind !== "external") throw e;
+    console.log(`  claude call${opts.label ? ` (${opts.label})` : ""} failed: ${e.message.split("\n")[0].slice(0, 200)}; retrying once`);
+    return invoke(prompt, opts, { ...meta, kind: "retry", attempt: meta.attempt + 1, reason: "transient CLI failure; no output to repair, so the same prompt is resent once" });
+  }
+}
+
+const baseMeta = (opts: ClaudeOptions): Meta => ({ operationId: randomUUID().slice(0, 8), attempt: 0, kind: opts.callKind ?? "generation", repair: false, reason: opts.reason });
+
+export async function claudeText(prompt: string, opts: ClaudeOptions = {}): Promise<string> {
+  return (await invokeWithRetry(prompt, opts, baseMeta(opts))).text;
 }
 
 /** Extracts the outermost JSON object from a reply. */
@@ -112,26 +162,86 @@ export function parseJsonReply<T>(text: string): T {
   return JSON.parse(body.slice(start, end + 1)) as T;
 }
 
+const maxRepairs = () => {
+  const n = getUsageContext().budgets?.repair?.maxAttemptsPerOperation;
+  return Math.min(MAX_REPAIR_ATTEMPTS_HARD, typeof n === "number" ? n : MAX_REPAIR_ATTEMPTS_HARD);
+};
+const repairOpts = (opts: ClaudeOptions, keepTools: boolean): ClaudeOptions => ({ ...opts, step: "repair", model: undefined, effort: undefined, allowedTools: keepTools ? opts.allowedTools : undefined, callKind: undefined });
+const short = (ps: string[]) => ps.slice(0, 8).join("; ");
+
 /**
- * Runs claude and parses a JSON object. If `check` returns problems, the
- * reply is sent back once with the problems so Claude can fix its own output.
+ * Runs claude and parses a JSON object, validating it with `check`.
+ * A defect is repaired as cheaply as is safe, at most `budgets.repair.maxAttemptsPerOperation`
+ * times (hard cap 3): a local formatting fix (free), then a field-level repair
+ * that returns only the failing fields (merged, then the WHOLE object is
+ * re-validated), else a bounded full-object repair. Invalid output is never
+ * accepted; every call (failed and repair included) is in the usage ledger.
  */
-export async function claudeJson<T>(prompt: string, opts: ClaudeOptions & { check?: (v: T) => string[] } = {}): Promise<T> {
-  let p = prompt;
-  for (let attempt = 0; ; attempt++) {
-    const text = await claudeText(p, opts);
-    let value: T;
-    try {
-      value = parseJsonReply<T>(text);
-    } catch {
-      if (attempt >= 1) throw new PipelineError(`Claude did not return valid JSON: ${text.slice(0, 300)}`, "external");
-      p = `${prompt}\n\nYour previous reply was not valid JSON. Reply with ONLY the JSON object.`;
+export async function claudeJson<T>(prompt: string, opts: JsonOptions<T> = {}): Promise<T> {
+  const meta = baseMeta(opts);
+  const limit = maxRepairs();
+  let repairs = 0;
+  let { text, row } = await invokeWithRetry(prompt, opts, meta);
+  let value: T | undefined;
+  let fieldMode: "none" | "tried" = "none";
+  let settled = false; // the current row already carries its final error (e.g. a rejected patch)
+  for (;;) {
+    // 1. parse
+    if (value === undefined) {
+      try {
+        value = parseJsonReply<T>(text);
+      } catch {
+        const local = localRepairJson(text);
+        if (local) {
+          console.log(`  repaired the reply's formatting locally (${local.fixes.join(", ")}); no extra Claude call`);
+          value = local.value as T;
+        } else {
+          row = amendCall(row, { status: "failed", error: { category: "json-parse", message: "reply was not valid JSON" } });
+          if (repairs >= limit) throw new PipelineError(`Claude did not return valid JSON: ${text.slice(0, 300)}`, "external");
+          repairs++;
+          ({ text, row } = await invoke(`Your previous reply was not valid JSON. Reformat it as a single valid JSON object without changing its content. Reply with ONLY the JSON object.\n\n${text}`, repairOpts(opts, false), { ...meta, attempt: repairs, kind: "repair-json", repair: true, reason: "reply was not parseable as JSON and could not be fixed locally" }));
+          continue;
+        }
+      }
+    }
+    // 2. validate
+    const problems = opts.check?.(value as T) ?? [];
+    if (!problems.length) return value as T;
+    if (!settled) row = amendCall(row, { status: "failed", error: { category: "validation", message: `${problems.length} problem(s): ${short(problems)}`.slice(0, 300) } });
+    settled = false;
+    if (repairs >= limit) throw new PipelineError(`Claude's output is still invalid after ${repairs} repair attempt${repairs === 1 ? "" : "s"}: ${problems.slice(0, 8).join("; ")}`, "invalid");
+    repairs++;
+    console.log(`  ${problems.length} validation problem(s) in Claude's reply; repairing (attempt ${repairs}/${limit})`);
+    const current = value as T;
+    const fr = opts.fieldRepair;
+    const plan = fr && fieldMode === "none" ? planFieldRepair(current, problems) : ({ safe: false, reason: !fr ? "this output's fields are not independent (field repair not enabled for it)" : "field repair already tried" } as const);
+    if (plan.safe) {
+      fieldMode = "tried";
+      const extra = typeof fr === "object" ? { context: fr.context?.(current), hint: fr.hint } : undefined;
+      const called = await invoke(fieldRepairPrompt(current as Record<string, unknown>, plan, extra), repairOpts(opts, false), { ...meta, attempt: repairs, kind: "repair-fields", repair: true, reason: `${plan.paths.length} failing field(s): ${plan.paths.join(", ").slice(0, 160)}` });
+      row = called.row;
+      let patched: ReturnType<typeof applyPatch> | null = null;
+      try { patched = applyPatch(current as Record<string, unknown>, extractPatch(parseJsonReply<unknown>(called.text)), plan); } catch { /* handled below */ }
+      if (!patched || "error" in patched) {
+        row = amendCall(row, { status: "failed", error: { category: "repair-rejected", message: (patched && "error" in patched ? patched.error : "the repair reply was not a JSON patch").slice(0, 200) } });
+        settled = true;
+        text = JSON.stringify(current);
+        value = current; // keep the original; the next round re-validates it and falls back to a full repair
+        continue;
+      }
+      value = patched.value as T;
+      const after = opts.check?.(value) ?? [];
+      if (!after.length) return value;
+      row = amendCall(row, { status: "failed", error: { category: "validation", message: `repair left ${after.length} problem(s): ${short(after)}`.slice(0, 300) } });
+      if (repairs >= limit) throw new PipelineError(`Claude's output is still invalid after ${repairs} repair attempt${repairs === 1 ? "" : "s"}: ${after.slice(0, 8).join("; ")}`, "invalid");
       continue;
     }
-    const problems = opts.check?.(value) ?? [];
-    if (!problems.length) return value;
-    if (attempt >= 1) throw new PipelineError(`Claude's output is still invalid after one repair: ${problems.slice(0, 8).join("; ")}`, "invalid");
-    console.log(`  ${problems.length} validation problem(s) in Claude's reply; asking it to fix them`);
-    p = `${prompt}\n\nYour previous reply:\n${JSON.stringify(value)}\n\nIt failed validation:\n- ${problems.slice(0, 30).join("\n- ")}\n\nReturn the corrected JSON only.`;
+    // Full-object repair, with the reason on record.
+    const resend = opts.repairResendsPrompt !== false;
+    const p = `${resend ? `${prompt}\n\n` : ""}Your previous reply:\n${JSON.stringify(current)}\n\nIt failed validation:\n- ${problems.slice(0, 30).join("\n- ")}\n\n${resend ? "" : "Do not search or fetch anything; fix it using only the content above, and do not invent sources or evidence. "}Return the corrected JSON object only.`;
+    const called = await invoke(p, repairOpts(opts, resend), { ...meta, attempt: repairs, kind: "repair-full", repair: true, reason: `full-object repair: ${plan.reason}`.slice(0, 200) });
+    row = called.row;
+    text = called.text;
+    value = undefined;
   }
 }

@@ -128,9 +128,9 @@ export function lock(path: string, label: string): () => void {
  * What went wrong, for the admin panel. Content failures are split by cause:
  * "editorial" (the explanation doesn't teach well enough), "factcheck" (claims
  * not verified), "duration" (measured media outside the configured range),
- * "config" (invalid settings); "quality" is rendered-media QA.
+ * "config" (invalid settings), "budget" (a configured usage limit stopped the run); "quality" is rendered-media QA.
  */
-export type ErrorKind = "busy" | "invalid" | "missing" | "external" | "quality" | "editorial" | "factcheck" | "duration" | "config" | "cancelled" | "failed";
+export type ErrorKind = "busy" | "invalid" | "missing" | "external" | "quality" | "editorial" | "factcheck" | "duration" | "config" | "budget" | "cancelled" | "failed";
 
 /** An error with a category the admin panel can show and act on. */
 export class PipelineError extends Error {

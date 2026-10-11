@@ -16,6 +16,7 @@ import { fileURLToPath } from "node:url";
 import { lintSpec, migrateSpec, SCENES_3D, SECTIONS, validateSpec, VISUALS, ICONS } from "../src/schema/storyboard.mjs";
 import { DEFAULT_SETTINGS, FORMAT_LABEL, normalizeSettings, resolveSettings, validateSettings } from "../src/schema/settings.mjs";
 import { PASS_RULES, RUBRIC } from "../src/schema/editorial.mjs";
+import { parseLedger, summarize } from "../src/schema/usage.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 // Data (backlog, specs, settings, outputs) can live elsewhere: tests point DATA_ROOT at a temp dir.
@@ -290,12 +291,12 @@ function broadcast(event, data) {
 }
 
 // What kind of failure, in the words the panel shows.
-const FAILURE = { editorial: "content quality", factcheck: "factual verification", config: "configuration", duration: "media duration", quality: "rendered-media QA" };
+const FAILURE = { budget: "usage budget", editorial: "content quality", factcheck: "factual verification", config: "configuration", duration: "media duration", quality: "rendered-media QA" };
 const failureCategory = (kind) => (kind ? FAILURE[kind] ?? kind : null);
 
 const jobSummary = (j) => ({
   id: j.id, slug: j.slug, title: j.title, mode: j.mode, modeLabel: j.label, fresh: j.fresh, options: j.options,
-  state: j.state, stage: j.stage, stages: j.stages, progress: j.progress, flagged: j.flagged, error: j.error, hint: j.hint, errorKind: j.errorKind ?? null, failure: failureCategory(j.errorKind), settings: j.settings ?? null, durations: j.durations ?? null,
+  state: j.state, stage: j.stage, stages: j.stages, progress: j.progress, flagged: j.flagged, error: j.error, hint: j.hint, errorKind: j.errorKind ?? null, failure: failureCategory(j.errorKind), settings: j.settings ?? null, durations: j.durations ?? null, usage: j.usage ?? null,
   createdAt: j.createdAt, startedAt: j.startedAt, endedAt: j.endedAt, exitCode: j.exitCode, logFile: j.logFile,
 });
 
@@ -363,6 +364,12 @@ function parseLine(job, line) {
       if (ev.status === "failed") { job.error = ev.error; job.hint = ev.hint ?? null; job.errorKind = ev.kind ?? null; if (ev.durations) job.durations = ev.durations; }
       emitJob(job);
       if (ev.status !== "running") broadcast("videos", { slug: job.slug });
+    } else if (ev.event === "usage") {
+      // Live totals come from the pipeline's own ledger aggregate; the same file backs /api/videos/:slug/usage.
+      if (ev.totals) job.usage = { runId: ev.runId, totals: ev.totals, stages: ev.stages, limits: ev.limits };
+      if (ev.type === "budget_exceeded") job.usage = { ...(job.usage ?? {}), stop: { stage: ev.stage, blocks: ev.blocks } };
+      broadcast("usage", { slug: job.slug, jobId: job.id, ...ev });
+      if (ev.type === "usage_updated" || ev.type === "budget_exceeded") emitJob(job);
     } else if (ev.event === "progress") {
       job.progress = { what: ev.what, done: ev.done, total: ev.total };
       emitJob(job);
@@ -608,6 +615,29 @@ function detail(slug) {
   };
 }
 
+// ---------- usage (out/<slug>/usage.jsonl, written by the pipeline) ----------
+
+/** The ledger for one video, its budgets and why the last run stopped. Old videos have no ledger: `available: false`, never zeros. */
+function usageFor(slug, runParam) {
+  const file = join(OUT, slug, "usage.jsonl");
+  const state = loadState(slug);
+  const budgets = state.run?.settings?.budgets ?? loadSettings().settings.budgets;
+  if (!existsSync(file)) return { available: false, slug, note: "Usage was not recorded for this video (it predates usage tracking, or no Claude call has been made yet).", budgets };
+  const all = parseLedger(readFileSync(file, "utf8"));
+  const runs = [...new Set(all.map((r) => r.runId))];
+  const runId = runParam && runParam !== "all" ? runParam : runParam === "all" ? "all" : state.usage?.runId && runs.includes(state.usage.runId) ? state.usage.runId : runs.at(-1);
+  const rows = runId === "all" ? all : all.filter((r) => r.runId === runId);
+  const s = summarize(rows, budgets);
+  return {
+    available: true, slug, runId, runs, budgets,
+    totals: s.run, stages: s.stages, limits: s.limits,
+    stop: state.usage?.runId === runId ? state.usage?.stop ?? null : null,
+    // Metadata only (the ledger holds no prompts); newest last, bounded.
+    calls: rows.slice(-1000),
+    cost: "Estimated cost is the Claude CLI's own estimate at API list prices, not a bill. Token usage, estimated cost and the 5-hour usage-window percentage are different measurements; the window percentage is not available here.",
+  };
+}
+
 async function route(req, res) {
   const url = new URL(req.url, "http://localhost");
   const p = url.pathname;
@@ -639,9 +669,9 @@ async function route(req, res) {
     return send(res, 200, saved);
   }
   // The shared validator, so the form checks exactly what the server checks.
-  if (req.method === "GET" && p === "/schema/settings.mjs") {
+  if (req.method === "GET" && (r = m(/^\/schema\/(settings|usage)\.mjs$/))) {
     res.writeHead(200, { "content-type": "text/javascript; charset=utf-8", "cache-control": "no-cache" });
-    return res.end(readFileSync(join(ROOT, "src/schema/settings.mjs")));
+    return res.end(readFileSync(join(ROOT, `src/schema/${r[1]}.mjs`)));
   }
 
   // Topics (backlog)
@@ -701,6 +731,7 @@ async function route(req, res) {
     else refreshStatus([slug]).then((changed) => changed && broadcast("status", { slug }));
     return send(res, 200, detail(slug));
   }
+  if ((r = m(/^\/api\/videos\/([^/]+)\/usage$/)) && req.method === "GET") return send(res, 200, usageFor(slugParam(r[1]), url.searchParams.get("run")));
   if ((r = m(/^\/api\/videos\/([^/]+)\/spec$/)) && req.method === "PUT") {
     const slug = slugParam(r[1]);
     if (jobs.some((j) => j.slug === slug && j.state === "running")) throw httpError(409, "A job is running for this video; wait for it or cancel it first");

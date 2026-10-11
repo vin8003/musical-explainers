@@ -170,3 +170,7 @@ All Claude steps shell out to the Claude Code CLI in headless mode using the log
 | Blender clip failed | The shot uses its 2D fallback and the Assets tab shows the error; fix and re-run the assets stage. |
 | A stage shows "cancelled" or "interrupted" | Run continue: finished stages are cached, the interrupted one starts again. |
 | esbuild "installed for another platform" | `node_modules` was installed under a different CPU architecture. Use the same Node that installed it (e.g. `/opt/homebrew/bin/npm`) or reinstall. |
+
+## Usage, repair and budgets
+
+Every Claude call is recorded in `out/<slug>/usage.jsonl`, invalid replies are repaired field-by-field where safe, and optional budgets stop the pipeline before a call is launched. See [usage-budgets.md](usage-budgets.md).

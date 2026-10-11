@@ -10,6 +10,10 @@
 //   unsupported-thesis   the dossier's thesis rests on an "insufficient" claim
 //   fail-script-short    the Short script call fails (exit 1), to simulate an interruption
 //   overlong-short       the Short script is always far over its range (the length retry cannot fix it)
+//   bad-claim            the first dossier has one invalid field (claims[2] source url); a field repair fixes it
+//   bad-claim-always     the field repair is also wrong (it keeps the bad url)
+//   no-usage             the CLI result carries no usage metadata
+//   partial-usage        only input/output tokens are reported
 //   research-v2          the dossier text differs (a research change)
 // FAKE_MUTATE_SETTINGS=<path> + FAKE_MUTATE_JSON: overwrite the settings file during the first outline call.
 import { appendFileSync, existsSync, writeFileSync } from "node:fs";
@@ -19,19 +23,36 @@ let input = "";
 for await (const c of process.stdin) input += c;
 
 const log = (entry) => process.env.FAKE_LOG && appendFileSync(process.env.FAKE_LOG, JSON.stringify(entry) + "\n");
+const envelope = (result) => {
+  const e = { type: "result", subtype: "success", is_error: false, result, num_turns: 1 };
+  if (modes.has("no-usage")) return e;
+  e.usage = modes.has("partial-usage") ? { input_tokens: 10, output_tokens: 20 } : { input_tokens: 10, cache_creation_input_tokens: 50, cache_read_input_tokens: 100, output_tokens: 20, service_tier: "standard" };
+  if (!modes.has("partial-usage")) { e.total_cost_usd = 0.01; e.modelUsage = { "claude-sonnet-fake": { inputTokens: 10, outputTokens: 20 } }; }
+  return e;
+};
 const reply = (obj) => {
   // Exit only after stdout is flushed: a pipe may take large replies in pieces.
-  process.stdout.write(JSON.stringify({ type: "result", is_error: false, result: JSON.stringify(obj) }), () => process.exit(0));
+  process.stdout.write(JSON.stringify(envelope(typeof obj === "string" ? obj : JSON.stringify(obj))), () => process.exit(0));
   return new Promise(() => {});
 };
 const format = /## Format: Short/.test(input) ? "short" : /## Format: Landscape/.test(input) ? "main" : null;
 
 const src = (n) => [{ url: `https://example.org/source-${n}`, title: `Source ${n}`, passage: `Finding ${n}`, supports: `claim ${n}`, kind: "authoritative", accessed: "fetched" }];
 
+if (input.includes("Some fields of a JSON object you produced failed validation")) {
+  log({ kind: "repair-fields", chars: input.length, hasOriginalPrompt: input.includes("You are the researcher") });
+  const patch = {};
+  for (const m of input.slice(input.indexOf("Current values:")).matchAll(/^([\w]+(?:\[\d+\])?): (.*)$/gm)) {
+    patch[m[1]] = JSON.parse(m[2].replace(/not-a-url/g, modes.has("bad-claim-always") ? "not-a-url" : "https://example.org/fixed"));
+  }
+  await reply({ patch });
+}
+
 if (input.includes("You are the researcher")) {
   log({ kind: "research" });
   const v2 = modes.has("research-v2");
   const claims = Array.from({ length: 8 }, (_, i) => ({ id: `c${i + 1}`, text: `Fact number ${i + 1}${v2 ? " (revised)" : ""}`, status: "supported", importance: 3, sources: src(i + 1) }));
+  if (modes.has("bad-claim")) claims[2].sources[0].url = "not-a-url";
   claims.push({ id: "weak", text: "A rumour", status: "insufficient", note: "no source found", sources: [] });
   await reply({
     qualification: { verdict: "proceed", centralQuestion: "How does it work?", angles: [{ angle: "The mechanism", question: "How?", strengths: "clear", weaknesses: "none", evidence: "strong" }], selectedAngle: "The mechanism", reason: "best evidence", scores: { curiosity: 4, depth: 4, evidence: 5, misconceptions: 3, demonstrations: 4, musical: 3 }, supportedMinutes: { min: 1, max: 12 }, shortInsight: "The one key idea" },
