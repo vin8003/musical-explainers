@@ -86,8 +86,16 @@ if (input.includes("plan ONE video in the requested format")) {
   });
 }
 
+if (input.includes("Repair only the requested fields of the listed script segments")) {
+  const request = JSON.parse(input.slice(input.lastIndexOf("Repair request:") + "Repair request:".length).trim());
+  log({ kind: request.findings.some((f) => f.criterion === "formatFit") ? "lengthRepair" : "scriptRepair", format: request.format, targets: request.findings.map((f) => `${f.segmentId}.${f.field}`) });
+  await reply({ patches: request.segments.map((segment) => ({ id: segment.id, fields: Object.fromEntries(segment.requestedFields.filter((field) => ["narration", "lyric", "headline", "purpose"].includes(field)).map((field) => [field, field === "narration" ? "A relay explains the mechanism clearly." : segment[field]])) })), unsafeReason: null });
+}
+
 if (input.includes("You write the script for ONE format")) {
-  log({ kind: "script", format, target, revision: input.includes("## Revise the previous version") });
+  const evidenceBlock = input.match(/## Thesis and referenced evidence\n([\s\S]*?)(?:\n\n##|$)/);
+  const evidence = evidenceBlock ? JSON.parse(evidenceBlock[1]).evidence?.claims?.map((c) => c.id) ?? [] : [];
+  log({ kind: "script", format, target, evidenceIds: evidence, revision: input.includes("## Full regeneration fallback") });
   if (format === "short" && modes.has("fail-script-short")) {
     process.stderr.write("simulated interruption");
     process.exit(1);
@@ -98,11 +106,11 @@ if (input.includes("You write the script for ONE format")) {
   const n = Math.max(format === "short" ? 3 : 8, Math.round(words / perShot));
   const tag = format === "short" ? "short" : "long";
   const shots = Array.from({ length: n }, (_, i) => ({
-    id: `${tag}-shot-${i + 1}`, section: i === 0 ? "intro" : i === n - 1 ? "outro" : "verse", purpose: `beat ${i + 1}`, beat: `b${Math.min(i + 1, 3)}`,
+    id: `${tag}-shot-${i + 1}`, section: i === 0 ? "intro" : i === n - 1 ? "outro" : "verse", purpose: `beat ${i + 1}`, beatId: `b${Math.min(i + 1, format === "short" ? 3 : 6)}`,
     narration: Array.from({ length: perShot }, (_, w) => (w === 0 ? `${tag[0].toUpperCase()}${tag.slice(1)}${i}` : "word")).join(" ") + ".",
     claims: [`c${(i % 8) + 1}`],
   }));
-  shots.splice(2, 0, { id: `${tag}-chorus`, section: "chorus", lyric: "A to B to C", purpose: "chorus", claims: [] });
+  shots.splice(2, 0, { id: `${tag}-chorus`, beatId: "b3", section: "chorus", lyric: "A to B to C", purpose: "chorus", claims: [] });
   await reply({ slug: "x", title: "Test topic", brief: { audience: "all", learningGoal: "explain A to C", hook: "How?" }, world: "night", music: { bpm: 120, key: "C", mode: "major", mood: "bright" }, shots });
 }
 
@@ -112,12 +120,13 @@ if (input.includes("independent editor reviewing ONE script")) {
   const weak = isMain && (modes.has("weak-review-always") || (modes.has("weak-review-once") && !existsSync(marker)));
   if (weak) writeFileSync(marker, "1");
   log({ kind: "review", format, weak });
-  const ids = [...input.matchAll(/"id": "([a-z0-9-]+)"/g)].map((m) => m[1]);
-  const shot = ids.find((i) => /shot/.test(i)) ?? ids[0];
+  const scriptMatch = input.match(/## Script segments\n([\s\S]*?)\n\n## Relevant outline/);
+  const script = scriptMatch ? JSON.parse(scriptMatch[1]) : [];
+  const shot = script.find((s) => /shot/.test(s.id))?.id ?? script[0]?.id;
   const scores = weak
     ? { accuracy: 5, clarity: 3, progression: 5, specificity: 5, examples: 5, engagement: 5, memorability: 5, formatFit: 5, music: 5, redundancy: 5 }
     : { accuracy: 5, clarity: 4, progression: 4, specificity: 4, examples: 4, engagement: 4, memorability: 4, formatFit: 4, music: 4, redundancy: 4 };
-  await reply({ scores, blocking: [], findings: weak ? [{ shot, criterion: "clarity", severity: "major", problem: "jargon", fix: "explain it" }] : [], summary: weak ? "high average but unclear" : "teaches the chain" });
+  await reply({ scores, blocking: [], findings: weak ? [{ segmentId: shot, field: "narration", criterion: "clarity", severity: "major", problem: "jargon", fix: "explain it with plain words" }] : [], summary: weak ? "high average but unclear" : "teaches the chain" });
 }
 
 if (input.includes("strict fact-checker")) {
@@ -128,7 +137,7 @@ if (input.includes("strict fact-checker")) {
 
 if (input.includes("creative director and storyboard artist")) {
   const ids = input.slice(input.lastIndexOf("## Direct these shots")).split("\n")[1].split(",").map((s) => s.trim()).filter(Boolean);
-  log({ kind: "direct", n: ids.length, hasOutline: input.includes("## Approved outline"), hasClaims: input.includes("## Research claims stated in the script") });
+  log({ kind: "direct", n: ids.length, hasOutline: input.includes("## Approved outline"), hasClaims: input.includes("## Evidence stated in the script") || input.includes("## Research claims stated in the script") });
   await reply({ shots: ids.map((id, i) => ({ id, visual: i % 2 ? { type: "steps", steps: [{ icon: "check", label: "A" }, { icon: "star", label: "B" }] } : { type: "kinetic", style: "stack", lines: ["A to C"] } })) });
 }
 

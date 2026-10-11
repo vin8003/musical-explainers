@@ -1137,11 +1137,43 @@ function renderAssetsTab(body) {
 
 // ----- quality -----
 
+function benchmarkHtml(history) {
+  const run = history?.runs?.at(-1);
+  if (!run) return `<div class="panel empty">No quality benchmark snapshot yet. The next pipeline run will save one.</div>`;
+  const q = run.quality ?? {};
+  const e = run.efficiency ?? {};
+  const cost = e.estimatedCostUsd == null ? "unavailable" : `$${Number(e.estimatedCostUsd).toFixed(4)}`;
+  const tokens = (n) => n == null ? "unknown" : tok(n);
+  const metric = (label, value, note = "") => `<div class="panel" style="margin:0"><div class="small muted">${label}</div><div style="font-size:18px;font-weight:700">${value}</div><div class="small muted">${note}</div></div>`;
+  const qualityCounts = q.passed == null ? "unavailable" : `${q.passed} pass · ${q.failed} fail`;
+  const qualityUnknown = q.unavailable == null ? "" : `${q.unavailable} unavailable`;
+  const callTime = e.callDurationMs == null ? "unknown" : `${Math.round(e.callDurationMs / 1000)}s`;
+  const cacheHits = e.cacheHits == null ? "unknown" : e.cacheHits;
+  const comparison = run.comparison;
+  const deltaText = (value, unit = "") => value == null ? "unknown" : `${value > 0 ? "+" : ""}${value}${unit}`;
+  const coverageDelta = (value) => value == null ? "unknown" : `${value > 0 ? "+" : ""}${Math.round(value * 100)} pp`;
+  return `<div class="panel">
+    <div class="row"><h3 class="grow" style="margin:0">Quality and efficiency benchmark</h3>${pill(String(q.status ?? "unavailable").toUpperCase(), q.status === "pass" ? "ok" : q.status === "fail" ? "bad" : "warn")}<span class="small muted">${esc(run.runId)} · ${esc(ago(Date.parse(run.at)))}</span></div>
+    <div class="small muted" style="margin:6px 0 12px">Repeatable topic expectations and deterministic quality gates. Full per-stage and per-call usage is in the <a href="#/video/${esc(history.slug)}/usage">Usage tab</a>.</div>
+    <div class="grid2" style="grid-template-columns:repeat(auto-fit,minmax(145px,1fr));margin-bottom:12px">
+      ${metric("Quality checks", qualityCounts, qualityUnknown)}
+      ${metric("Expected concept coverage", q.coverage == null ? "unavailable" : `${Math.round(q.coverage * 100)}%`, `essential ${q.essentialCoverage == null ? "unavailable" : `${Math.round(q.essentialCoverage * 100)}%`}`)}
+      ${metric("Claude calls", e.calls ?? 0, `${e.repairs ?? 0} repairs · ${e.failures ?? 0} call failures`)}
+      ${metric("Tokens", `${tokens(e.inputTokens)} in · ${tokens(e.outputTokens)} out`, `cost ${cost}`)}
+      ${metric("Model call time", callTime, `${cacheHits} cached stage(s)`)}
+      ${metric("Final duration", Object.entries(run.durations ?? {}).map(([f, sec]) => `${f} ${sec == null ? "unknown" : dur(sec)}`).join(" · ") || "unavailable")}
+    </div>
+    ${comparison ? `<div class="small ${comparison.qualityRegression ? "err" : "muted"}" style="margin-bottom:10px">Compared with ${esc(comparison.baselineRunId)}: ${comparison.qualityRegression ? "quality regression detected" : "no new failed quality checks"} · coverage ${coverageDelta(comparison.quality?.coverageDelta)} · essential coverage ${coverageDelta(comparison.quality?.essentialCoverageDelta)} · calls ${deltaText(comparison.efficiency?.calls)} · repairs ${deltaText(comparison.efficiency?.repairs)} · input tokens ${deltaText(comparison.efficiency?.inputTokens)} · cost ${deltaText(comparison.efficiency?.estimatedCostUsd, " USD")}. Null means the measurement was unavailable.</div>` : `<div class="small muted" style="margin-bottom:10px">This is the first saved run and becomes the local comparison baseline.</div>`}
+    ${(q.checks ?? []).some((c) => c.status !== "pass") ? `<details><summary class="small muted">Quality gate details</summary><div style="margin-top:6px">${q.checks.filter((c) => c.status !== "pass").map((c) => `<div class="small">${pill(c.status, c.status === "fail" ? "bad" : "warn")} <b>${esc(c.id)}</b> · ${esc(c.detail)}</div>`).join("")}</div></details>` : ""}
+  </div>`;
+}
+
 function renderQualityTab(body) {
   const v = S.video;
+  const benchmark = benchmarkHtml(v.benchmark);
   const cands = (v.candidates ?? []).filter((c) => v.qa?.[c.id]);
   if (!cands.length) {
-    body.innerHTML = `<div class="panel empty">No quality report yet. ${v.candidates?.length ? `<button class="primary" data-stage="qa">Run QA on the latest candidate</button>` : "Render a candidate first."}</div>`;
+    body.innerHTML = `${benchmark}<div class="panel empty">No quality report yet. ${v.candidates?.length ? `<button class="primary" data-stage="qa">Run QA on the latest candidate</button>` : "Render a candidate first."}</div>`;
     const b = $("[data-stage]", body);
     if (b) b.onclick = () => startJob(v.slug, { mode: "stage", stage: "qa" }).catch(() => {});
     return;
@@ -1151,6 +1183,7 @@ function renderQualityTab(body) {
   const sev = { fail: 0, warn: 1, info: 2 };
   const findings = [...r.findings].sort((a, b) => sev[a.severity] - sev[b.severity]);
   body.innerHTML = `
+    ${benchmark}
     <div class="panel">
       <div class="row" style="margin-bottom:10px">
         <select id="qaCand" style="width:auto">${cands.map((c) => `<option value="${esc(c.id)}" ${c.id === id ? "selected" : ""}>${esc(c.id)}${c.preview ? " (preview)" : ""} · ${esc(v.qa[c.id].status)}</option>`).join("")}</select>

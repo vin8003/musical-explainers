@@ -4,7 +4,7 @@
 // No network, no model, no rendering.
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -55,6 +55,15 @@ test("research and outline exist before any script call; each format has its own
   assert.equal(short.format, "short");
   assert.ok(main.shots.length > short.shots.length);
   assert.ok(!main.shots.some((s) => short.shots.some((t) => t.id === s.id || (s.narration && s.narration === t.narration))));
+  const research = sb.read(`specs/${SLUG}.research.json`), evidence = sb.read(`specs/${SLUG}.evidence.json`);
+  assert.ok(evidence.claims.some((c) => c.id === research.thesis.claimIds[0]));
+  assert.ok(evidence.sources.every((s) => s.id.startsWith("src-") && s.passage && s.provenance.stage === "research"));
+  for (const [spec, format] of [[main, "main"], [short, "short"]]) {
+    const beatIds = new Set(sb.read(`specs/${SLUG}.outline.json`).formats[format].beats.map((b) => b.id));
+    assert.ok(spec.shots.every((shot) => beatIds.has(shot.beatId)), `${format} segments keep stable outline beat ids`);
+  }
+  const scriptCalls = sb.calls().filter((x) => x.kind === "script");
+  assert.ok(scriptCalls.every((call) => call.evidenceIds.length > 0 && !call.evidenceIds.includes("weak")), "scripts receive only the referenced usable evidence subset");
   const reviews = sb.read(`specs/${SLUG}.review.json`).formats;
   assert.ok(reviews.main.verdict.pass && reviews.short.verdict.pass);
   assert.ok(order.includes("review:main") && order.includes("review:short"));
@@ -107,6 +116,46 @@ test("a second run is fully cached; a Short-only duration change replans only th
   assert.ok(!after.includes("research") && !after.includes("outline:main") && !after.includes("script:main"), after.join());
 });
 
+test("benchmark compares the new run with the prior baseline and keeps unavailable usage metrics null", () => {
+  const sb = sandbox();
+  assert.equal(sb.run(through).code, 0);
+  const baseline = sb.read(`out/${SLUG}/benchmark.json`).runs[0];
+  assert.equal(sb.run(through).code, 0);
+  const runs = sb.read(`out/${SLUG}/benchmark.json`).runs;
+  assert.equal(runs.length, 2);
+  const current = runs[1];
+  assert.equal(current.comparison.baselineRunId, baseline.runId);
+  assert.equal(current.comparison.qualityRegression, false);
+  assert.equal(current.comparison.efficiency.calls, -baseline.efficiency.calls);
+  assert.equal(current.comparison.efficiency.inputTokens, null, "a cached no-call run has no fabricated token total");
+  assert.equal(current.comparison.efficiency.estimatedCostUsd, null);
+  assert.equal(current.comparison.durations.main, null);
+  for (const key of ["calls", "repairs", "failures", "inputTokens", "outputTokens", "estimatedCostUsd", "callDurationMs", "stageRuns", "cacheHits", "stageFailures"]) assert.ok(Object.hasOwn(current.comparison.efficiency, key), `comparison includes ${key}`);
+  assert.ok(Object.hasOwn(current.comparison.quality, "coverageDelta"));
+});
+
+test("changing reviewer settings invalidates reviews only", () => {
+  const sb = sandbox();
+  assert.equal(sb.run(["--to", "review"]).code, 0);
+  const before = sb.calls().length;
+  const settings = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
+  settings.models.review.model = "haiku";
+  mkdirSync(join(sb.data, "config"), { recursive: true });
+  writeFileSync(join(sb.data, "config/settings.json"), JSON.stringify(settings));
+  assert.equal(sb.status().stages.review.status, "stale");
+  const result = sb.run(["--to", "review"]);
+  assert.equal(result.code, 0, result.out);
+  const changed = sb.calls().slice(before);
+  assert.deepEqual(changed.map((call) => call.kind), ["review", "review"]);
+  assert.equal(sb.status().stages.script.status, "fresh");
+  assert.equal(sb.status().stages.outline.status, "fresh");
+  const specPath = join(sb.data, `specs/${SLUG}.json`);
+  const spec = JSON.parse(readFileSync(specPath, "utf8"));
+  spec.shots[0].purpose = "a revised teaching purpose";
+  writeFileSync(specPath, JSON.stringify(spec));
+  assert.equal(sb.status().stages.review.status, "stale", "review cache tracks fields shown to the reviewer, not just spoken words");
+});
+
 test("a research change invalidates outlines, scripts, reviews and fact-checks", () => {
   const sb = sandbox();
   assert.equal(sb.run(through).code, 0);
@@ -136,8 +185,8 @@ test("the editorial review fails a valid script even with a high average, after 
   assert.match(r.out, /clarity scored 3/);
   const c = kinds(sb.calls());
   assert.equal(c.filter((k) => k === "review:main").length, 2, "one review, one revision, one re-review");
-  assert.equal(c.filter((k) => k === "script:main").length, 2);
-  assert.ok(sb.calls().find((x) => x.kind === "script" && x.revision));
+  assert.equal(c.filter((k) => k === "script:main").length, 1, "a local review finding does not regenerate the whole script");
+  assert.ok(sb.calls().find((x) => x.kind === "scriptRepair"));
   assert.ok(!c.includes("factcheck"), "no fact-check on a script that failed review");
   // The failing review is preserved for a human.
   const rv = sb.read(`specs/${SLUG}.review.json`).formats.main;
@@ -166,17 +215,49 @@ test("a weak first review recovers through one revision and the pipeline continu
   assert.equal(rv.verdict.pass, true);
   assert.equal(rv.history.length, 2);
   assert.equal(rv.history[0].revised, true);
+  const before = sb.read(`specs/${SLUG}.json`);
+  assert.ok(before.shots.every((shot) => shot.beatId));
+  const repairs = sb.calls().filter((call) => call.kind === "scriptRepair");
+  assert.ok(repairs.length && repairs.every((repair) => repair.targets.length === 1), "each local repair names one segment field");
+  const archiveDir = join(sb.data, `out/${SLUG}/archive`);
+  const archiveNames = readdirSync(archiveDir);
+  const changed = [];
+  for (const format of ["main", "short"]) {
+    const archivedName = archiveNames.find((name) => name.includes(`before-review-repair-${format}`));
+    if (!archivedName) continue;
+    const beforeShots = sb.read(`out/${SLUG}/archive/${archivedName}`).shots;
+    const afterShots = sb.read(`specs/${SLUG}${format === "short" ? ".short" : ""}.json`).shots;
+    const priorById = new Map(beforeShots.map((shot) => [shot.id, shot]));
+    for (const shot of afterShots) {
+      const beforeShot = priorById.get(shot.id);
+      if (JSON.stringify(shot) !== JSON.stringify(beforeShot)) changed.push({ format, id: shot.id, beforeShot, afterShot: shot });
+    }
+  }
+  assert.equal(changed.length, 1, "a local repair changes only one affected segment");
+  const { format, id, beforeShot, afterShot } = changed[0];
+  const repair = repairs.find((item) => item.format === format && item.targets.includes(`${id}.narration`));
+  assert.ok(repair, `the changed narration is the requested target (${format} ${id})`);
+  assert.deepEqual({ ...afterShot, narration: beforeShot.narration }, beforeShot, "fields outside the targeted narration stay unchanged");
 });
 
 test("an interrupted run resumes: finished stages stay cached", () => {
   const sb = sandbox();
   const r1 = sb.run(through, { FAKE_MODE: "fail-script-short" });
   assert.notEqual(r1.code, 0);
+  const state1 = sb.read(`out/${SLUG}/state.json`);
+  const firstBenchmark = sb.read(`out/${SLUG}/benchmark.json`);
+  assert.equal(firstBenchmark.runs.length, 1);
+  assert.equal(firstBenchmark.runs[0].runId, state1.usage.runId);
   const n = kinds(sb.calls());
   assert.ok(n.includes("script:main") && n.includes("outline:short"));
   const before = sb.calls().length;
   const r2 = sb.run(through);
   assert.equal(r2.code, 0, r2.out);
+  const state2 = sb.read(`out/${SLUG}/state.json`);
+  const resumedBenchmark = sb.read(`out/${SLUG}/benchmark.json`);
+  assert.equal(state2.usage.runId, state1.usage.runId);
+  assert.equal(resumedBenchmark.runs.length, 1, "resume overwrites the same benchmark run instead of duplicating it");
+  assert.ok(resumedBenchmark.runs[0].efficiency.stageRuns > firstBenchmark.runs[0].efficiency.stageRuns, "stage execution metrics accumulate across a resume");
   const after = kinds(sb.calls().slice(before));
   assert.ok(!after.includes("research") && !after.includes("outline:main") && !after.includes("outline:short") && !after.includes("script:main"), after.join());
   assert.ok(after.includes("script:short"));
