@@ -658,13 +658,28 @@ async function renderSettings() {
         </div>
         <div class="err small" data-err="narration"></div>
       </div>
+      <h2>Models and effort</h2>
+      <div class="panel">
+        <div class="small muted" style="margin-bottom:8px">One row per Claude call. Effort is how much the model reasons (and costs): raise it where output quality is judged by people, lower it where code validates the result and retries. Sonnet is the ceiling; Haiku is the cheap option. Environment variables <code>CLAUDE_MODEL</code> / <code>CLAUDE_EFFORT</code> (or <code>CLAUDE_MODEL_DIRECT</code> etc.) override these for one run.</div>
+        <div class="tablewrap"><table>
+          <thead><tr><th>Step</th><th>Model</th><th>Effort</th><th>Why</th></tr></thead>
+          <tbody>${schema.MODEL_STEPS.map((st) => `<tr data-step="${st.id}">
+            <td><b>${esc(st.label)}</b>${st.tools ? ` <span class="pill">${st.tools === "web" ? "web search" : "reads images"}</span>` : ""}</td>
+            <td><select data-m="${st.id}" aria-label="${esc(st.label)} model">${schema.MODEL_CHOICES.map((m) => `<option ${eff.models[st.id].model === m ? "selected" : ""}>${m}</option>`).join("")}</select></td>
+            <td><select data-e="${st.id}" aria-label="${esc(st.label)} effort">${schema.EFFORT_LEVELS.map((e) => `<option ${eff.models[st.id].effort === e ? "selected" : ""}>${e}</option>`).join("")}</select></td>
+            <td class="small muted">${esc(st.why)}</td></tr>`).join("")}</tbody>
+        </table></div>
+        <div class="row" style="margin-top:8px"><button type="button" class="sm ghost" id="modelsReset">Reset models to defaults</button></div>
+        <div class="err small" data-err="models"></div>
+      </div>
       <div id="setErr" class="err small" role="alert"></div>
       <div class="row" style="justify-content:flex-end"><button type="button" class="ghost" id="setRevert" disabled>Discard changes</button><button type="submit" class="primary" id="setSave" disabled>Save settings</button></div>
     </form>`;
   const form = $("#settingsForm");
   const read = () => {
     const num = (el) => (el.value.trim() === "" ? NaN : Number(el.value));
-    const out = { formats: { main: {}, short: {} }, narration: { wordsPerMinute: num($("#wpm")), targetTolerance: num($("#tol")) / 100 } };
+    const out = { formats: { main: {}, short: {} }, narration: { wordsPerMinute: num($("#wpm")), targetTolerance: num($("#tol")) / 100 }, models: {} };
+    for (const st of schema.MODEL_STEPS) out.models[st.id] = { model: $(`[data-m=${st.id}]`, form).value, effort: $(`[data-e=${st.id}]`, form).value };
     const unitErrors = [];
     for (const f of ["main", "short"])
       for (const k of ["targetSeconds", "minSeconds", "maxSeconds"]) {
@@ -680,6 +695,7 @@ async function renderSettings() {
     const problems = [...unitErrors, ...schema.validateSettings(out)];
     for (const f of ["main", "short"]) $(`[data-err=${f}]`, form).textContent = problems.filter((x) => x.startsWith(data.labels[f])).join(" · ");
     $("[data-err=narration]", form).textContent = problems.filter((x) => /rate|tolerance/i.test(x)).join(" · ");
+    $("[data-err=models]", form).textContent = problems.filter((x) => /model|effort/i.test(x)).join(" · ");
     $("#setSave").disabled = !S.settingsDirty || problems.length > 0;
     return { out, problems };
   };
@@ -689,7 +705,15 @@ async function renderSettings() {
     $("#setRevert").disabled = false;
     check();
   };
-  $$("input", form).forEach((el) => (el.oninput = dirty));
+  $$("input, select", form).forEach((el) => (el.oninput = dirty));
+  $("#modelsReset").onclick = () => {
+    for (const st of schema.MODEL_STEPS) {
+      $(`[data-m=${st.id}]`, form).value = data.defaults.models[st.id].model;
+      $(`[data-e=${st.id}]`, form).value = data.defaults.models[st.id].effort;
+    }
+    dirty();
+    toast("Models reset to the defaults; save to apply");
+  };
   $$("[data-reset]", form).forEach((b) => (b.onclick = () => {
     const f = b.dataset.reset;
     for (const k of ["targetSeconds", "minSeconds", "maxSeconds"]) {

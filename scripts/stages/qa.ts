@@ -282,6 +282,7 @@ export async function qaStage(ctx: RunCtx): Promise<StageResult> {
       `${REVIEW_PROMPT}\n\nLearning goal: ${props.spec.brief?.learningGoal ?? props.spec.title}\n\nShots:\n${shotList}\n\nContact sheets:\n${files.map((f) => `- ${f}`).join("\n")}`,
       {
         allowedTools: ["Read"],
+        step: "visualReview",
         label: "visual review",
         check: (x) => {
           const seen = new Set((x?.inspected ?? []).map((i) => i.file));

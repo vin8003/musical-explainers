@@ -2,10 +2,16 @@
 import type { Format } from "./timeline.mjs";
 
 export type FormatDuration = { targetSeconds: number; minSeconds: number; maxSeconds: number };
+export type ModelStepId = "research" | "outline" | "script" | "scriptFix" | "review" | "factcheck" | "revise" | "direct" | "visualReview";
+export type EffortLevel = "low" | "medium" | "high" | "xhigh" | "max";
+export type ModelChoice = { model: string; effort: EffortLevel };
+export type ModelStep = { id: ModelStepId; label: string; stage: string; tools?: "web" | "images"; why: string };
 export type Settings = {
   version: number;
   formats: Record<Format, FormatDuration>;
   narration: { wordsPerMinute: number; targetTolerance: number };
+  /** Model and reasoning effort per Claude call. */
+  models: Record<ModelStepId, ModelChoice>;
 };
 export type DurationCheck = { verdict: "ok" | "off-target" | "short" | "long" | "unknown"; message: string };
 
@@ -22,3 +28,8 @@ export declare function fmt(seconds: number): string;
 export declare const BLOCKING_VERDICTS: string[];
 export declare function isBlocking(verdict: string | null | undefined): boolean;
 export declare function wordsToTarget(m: { seconds: number; targetSeconds: number; measuredWpm?: number | null }, fallbackWpm: number): number;
+export declare const MODEL_STEPS: ModelStep[];
+export declare const MODEL_STEP_IDS: ModelStepId[];
+export declare const MODEL_CHOICES: readonly string[];
+export declare const EFFORT_LEVELS: readonly EffortLevel[];
+export declare function isAllowedModel(m: unknown): boolean;

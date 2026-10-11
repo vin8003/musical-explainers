@@ -124,6 +124,7 @@ export async function factcheckStage(ctx: RunCtx): Promise<StageResult> {
     const evidence = research ? `\n\nResearch dossier claims (provenance only; verify independently):\n${JSON.stringify(research.claims.map((c) => ({ id: c.id, text: c.text, status: c.status, qualification: c.qualification, sources: c.sources.map((x) => ({ url: x.url, title: x.title, passage: x.passage })) })))}` : "";
     const reply = await claudeJson<{ claims: Claim[] }>(`${prompt("factcheck")}${evidence}\n\nItems:\n${JSON.stringify(todo.map((t) => ({ shot: t.shot, text: t.text })), null, 1)}`, {
       allowedTools: ["WebSearch", "WebFetch"],
+      step: "factcheck",
       label: "factcheck",
       check: (r) => {
         if (!Array.isArray(r?.claims) || r.claims.length !== todo.length) return [`return exactly ${todo.length} claims, one per item, in order`];
@@ -163,6 +164,7 @@ export async function reviseSpec(slug: string, before: VideoSpec, flagged: Claim
   const reply = await claudeJson<{ shots: Shot[] }>(
     `${prompt("revise")}\n\nPer-shot narration limit: ${limit} words.\n\nFlagged claims:\n${JSON.stringify(flagged.map((c) => ({ shot: c.shot, claim: c.claim, verdict: c.verdict, correction: c.correction, note: c.note })), null, 2)}${claims ? `\n\nResearch dossier claims you may rely on:\n${JSON.stringify(claims)}` : ""}\n\nVideoSpec:\n${JSON.stringify(before)}`,
     {
+      step: "revise",
       label: "revise",
       check: (r) => {
         if (!Array.isArray(r?.shots) || !r.shots.length) return ["return { shots: [...] } with the changed shots"];
@@ -272,6 +274,7 @@ export async function directStage(ctx: RunCtx): Promise<StageResult> {
       const current = spec;
       // Later batches see earlier directed shots as "current storyboard" for continuity.
       const reply = await claudeJson<DirectReply>(directorPrompt(current, batch, ctx.notes, context), {
+        step: "direct",
         label: `direct ${fmtName}`,
         check: (r) => {
           if (!Array.isArray(r?.shots)) return ["shots must be a list"];

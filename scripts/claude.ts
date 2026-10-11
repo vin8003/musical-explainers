@@ -4,11 +4,18 @@
 // retry at all when the subscription's usage limit is hit.
 import { spawn } from "node:child_process";
 import { PipelineError } from "./core/files";
+import { runSettings } from "./core/settings";
+import { isAllowedModel, EFFORT_LEVELS } from "../src/schema/settings.mjs";
+import type { ModelChoice, ModelStepId } from "../src/schema/settings.mjs";
 
 export type ClaudeOptions = {
   /** e.g. ["WebSearch", "WebFetch"] for the fact-check stage, ["Read"] for visual review. */
   allowedTools?: string[];
+  /** Which pipeline step this call is; picks its model and effort from the job's settings. */
+  step?: ModelStepId;
+  /** Explicit override for this one call; beats the step's setting. */
   model?: string;
+  effort?: string;
   /** Milliseconds before the call is abandoned (default 15 min, CLAUDE_TIMEOUT_MS). */
   timeoutMs?: number;
   label?: string;
@@ -26,12 +33,32 @@ function cleanEnv() {
   return env;
 }
 
+let snapshot: ReturnType<typeof runSettings> | undefined;
+
+/**
+ * Model and effort for one call, most specific first:
+ *   1. the call's own override (opts.model / opts.effort)
+ *   2. CLAUDE_MODEL_<STEP> / CLAUDE_EFFORT_<STEP> (e.g. CLAUDE_MODEL_DIRECT=haiku)
+ *   3. CLAUDE_MODEL / CLAUDE_EFFORT, for the whole run
+ *   4. the step's row in the job's settings (admin: Settings > Models)
+ * Never the CLI's own default. Opus is refused wherever it comes from.
+ */
+export function resolveModel(opts: Pick<ClaudeOptions, "step" | "model" | "effort">, env = process.env): ModelChoice {
+  const key = opts.step?.replace(/[A-Z]/g, (c) => `_${c}`).toUpperCase();
+  let fromSettings: ModelChoice | undefined;
+  if (opts.step) fromSettings = (snapshot ??= runSettings(env)).settings.models[opts.step];
+  const model = opts.model || (key && env[`CLAUDE_MODEL_${key}`]) || env.CLAUDE_MODEL || fromSettings?.model || "sonnet";
+  const effort = opts.effort || (key && env[`CLAUDE_EFFORT_${key}`]) || env.CLAUDE_EFFORT || fromSettings?.effort || "medium";
+  if (!isAllowedModel(model)) throw new PipelineError(`Model "${model}" is not allowed for ${opts.step ?? "this call"}: use sonnet or haiku (Opus is not used in this project).`, "config");
+  if (!(EFFORT_LEVELS as readonly string[]).includes(effort)) throw new PipelineError(`Effort "${effort}" is not valid for ${opts.step ?? "this call"}: use ${EFFORT_LEVELS.join(", ")}.`, "config");
+  return { model, effort: effort as ModelChoice["effort"] };
+}
+
 function runOnce(prompt: string, opts: ClaudeOptions): Promise<string> {
   const args = ["-p", "--output-format", "json"];
-  // Sonnet unless a call or CLAUDE_MODEL says otherwise (never rely on the CLI's default).
-  args.push("--model", opts.model ?? process.env.CLAUDE_MODEL ?? "sonnet");
-  // CLAUDE_EFFORT (e.g. "low") lowers reasoning effort for every call in this run.
-  if (process.env.CLAUDE_EFFORT) args.push("--effort", process.env.CLAUDE_EFFORT);
+  const { model, effort } = resolveModel(opts);
+  args.push("--model", model, "--effort", effort);
+  console.log(`  [${opts.step ?? opts.label ?? "claude"}: ${model}, ${effort} effort]`);
   if (opts.allowedTools?.length) args.push("--allowedTools", opts.allowedTools.join(","));
   const timeoutMs = opts.timeoutMs ?? Number(process.env.CLAUDE_TIMEOUT_MS ?? 15 * 60 * 1000);
   return new Promise((resolve, reject) => {
