@@ -10,6 +10,8 @@ import {
 import type { Shot, VideoSpec } from "../../src/schema/storyboard.mjs";
 import { claudeJson } from "../claude";
 import { archive, paths, PipelineError, readJson, ROOT, writeJson } from "../core/files";
+import { evidenceForClaims } from "../../src/schema/evidence.mjs";
+import { PROMPT_VERSIONS } from "../../src/schema/editorial.mjs";
 import type { Format, RunCtx, StageResult } from "./types";
 
 export const prompt = (name: string) => readFileSync(join(ROOT, "prompts", `${name}.md`), "utf8");
@@ -65,7 +67,7 @@ export const specFile = (slug: string, format: Format) => (format === "short" ? 
 // ---------- fact-check ----------
 
 export type SourceRef = string | { url: string; title?: string; passage?: string };
-export type Claim = { shot?: string; format?: Format; claim: string; verdict: "ok" | "fix" | "cut"; correction?: string; note?: string; sources?: SourceRef[] };
+export type Claim = { shot?: string; format?: Format; claim: string; evidenceIds?: string[]; verificationHash?: string; verdict: "ok" | "fix" | "cut"; correction?: string; note?: string; sources?: SourceRef[] };
 /** specs/<slug>.sources.json: verdicts keyed by exact text, shared by both cuts (the same sentence is verified once). */
 export type Sources = { claims: Claim[]; checkedAt?: string; researchHash?: string | null; history?: { at: string; flagged: number; revised: boolean }[] };
 
@@ -96,8 +98,8 @@ export function reusableSources(sources: Sources | null, rHash: string | null): 
 }
 
 /** Items that have no "ok" verdict yet. */
-export function uncheckedItems(spec: VideoSpec, sources: Sources | null) {
-  const ok = new Set((sources?.claims ?? []).filter((c) => c.verdict === "ok").map((c) => c.claim));
+export function uncheckedItems(spec: VideoSpec, sources: Sources | null, expectedHashes?: Map<string, string>) {
+  const ok = new Set((sources?.claims ?? []).filter((c) => c.verdict === "ok" && (!expectedHashes || c.verificationHash === expectedHashes.get(c.claim))).map((c) => c.claim));
   return factItems(spec).filter((i) => !ok.has(i.text));
 }
 
@@ -106,23 +108,38 @@ const factFormats = (slug: string, formats: Format[]) => specsFor(slug, formats)
 export async function factcheckStage(ctx: RunCtx): Promise<StageResult> {
   const groups = factFormats(ctx.slug, ctx.formats);
   if (!groups.length) throw new PipelineError("No storyboard yet: run the script stage first", "missing");
-  const { loadResearch, researchHash } = await import("./editorial");
+  const { factcheckItemHash, loadEvidence, loadResearch, researchHash } = await import("./editorial");
   const research = loadResearch(ctx.slug);
   const rHash = researchHash(research);
+  const evidence = loadEvidence(ctx.slug);
+  if (research && (!evidence || evidence.researchHash !== rHash)) throw new PipelineError("Canonical evidence is missing or out of date: run the research stage to normalize it", "missing");
   const maxRounds = Number(process.env.FACTCHECK_MAX_REVISIONS ?? 2);
   const specs = new Map(groups.map((g) => [g.format, g.spec]));
   let revised = 0;
   for (let round = 0; ; round++) {
     const sources = reusableSources(readJson<Sources | null>(paths.sources(ctx.slug), null), rHash);
-    const todo: { shot: string; text: string; format: Format }[] = [];
-    for (const [format, spec] of specs) for (const i of uncheckedItems(spec, sources)) if (!todo.some((t) => t.text === i.text)) todo.push({ ...i, format });
+    const byText = new Map<string, { shot: string; format: Format; text: string; claimIds: string[] }>();
+    for (const [format, spec] of specs) for (const item of factItems(spec)) {
+      const claimIds = spec.shots.find((shot) => shot.id === item.shot)?.claims ?? [];
+      const prior = byText.get(item.text);
+      if (prior) prior.claimIds = [...new Set([...prior.claimIds, ...claimIds])];
+      else byText.set(item.text, { ...item, format, claimIds: [...claimIds] });
+    }
+    const allItems = [...byText.values()];
+    const verificationHashes = new Map(allItems.map((item) => [item.text, factcheckItemHash(item.text, item.claimIds, evidence, ctx.settings)]));
+    const todo: { shot: string; text: string; format: Format; claimIds: string[] }[] = [];
+    for (const item of allItems) {
+      const isCurrent = sources?.claims.some((claim) => claim.claim === item.text && claim.verdict === "ok" && claim.verificationHash === verificationHashes.get(item.text));
+      if (!isCurrent) todo.push(item);
+    }
     if (!todo.length) {
       const all = new Set([...specs.values()].flatMap((s) => factItems(s).map((i) => i.text))).size;
       return { summary: `${all} items ok across ${[...specs.keys()].join(" + ")}${revised ? ` after ${revised} revision(s)` : ""}`, cached: round === 0 && revised === 0 };
     }
     console.log(`  checking ${todo.length} new or flagged item(s) with web search${round ? ` (after revision ${round})` : ""}`);
-    const evidence = research ? `\n\nResearch dossier claims (provenance only; verify independently):\n${JSON.stringify(research.claims.map((c) => ({ id: c.id, text: c.text, status: c.status, qualification: c.qualification, sources: c.sources.map((x) => ({ url: x.url, title: x.title, passage: x.passage })) })))}` : "";
-    const reply = await claudeJson<{ claims: Claim[] }>(`${prompt("factcheck")}${evidence}\n\nItems:\n${JSON.stringify(todo.map((t) => ({ shot: t.shot, text: t.text })), null, 1)}`, {
+    const subset = evidence ? evidenceForClaims(evidence, [...new Set(todo.flatMap((item) => item.claimIds))]) : null;
+    const evidenceContext = subset ? `\n\nResearch evidence for context only; independently verify each item:\n${JSON.stringify(subset)}` : "";
+    const reply = await claudeJson<{ claims: Claim[] }>(`${prompt("factcheck")}${evidenceContext}\n\nItems:\n${JSON.stringify(todo.map((t) => ({ shot: t.shot, text: t.text, evidenceIds: t.claimIds })), null, 1)}`, {
       allowedTools: ["WebSearch", "WebFetch"],
       step: "factcheck",
       label: "factcheck",
@@ -133,8 +150,8 @@ export async function factcheckStage(ctx: RunCtx): Promise<StageResult> {
     });
     // Merge: keep ok verdicts for text still present, replace the rest.
     const present = new Set([...specs.values()].flatMap((s) => factItems(s).map((i) => i.text)));
-    const fresh = reply.claims.map((c, i) => ({ ...c, shot: todo[i].shot, format: todo[i].format, claim: todo[i].text }));
-    const kept = (sources?.claims ?? []).filter((c) => c.verdict === "ok" && present.has(c.claim) && !fresh.some((x) => x.claim === c.claim));
+    const fresh = reply.claims.map((c, i) => ({ ...c, shot: todo[i].shot, format: todo[i].format, claim: todo[i].text, evidenceIds: todo[i].claimIds, verificationHash: verificationHashes.get(todo[i].text) }));
+    const kept = (sources?.claims ?? []).filter((c) => c.verdict === "ok" && present.has(c.claim) && c.verificationHash === verificationHashes.get(c.claim) && !fresh.some((x) => x.claim === c.claim));
     const merged: Sources = { claims: [...kept, ...fresh], checkedAt: new Date().toISOString(), researchHash: rHash, history: [...(sources?.history ?? []), { at: new Date().toISOString(), flagged: fresh.filter((c) => c.verdict !== "ok").length, revised: revised > 0 }] };
     archive(ctx.slug, paths.sources(ctx.slug), "factcheck");
     writeJson(paths.sources(ctx.slug), merged);
@@ -150,7 +167,8 @@ export async function factcheckStage(ctx: RunCtx): Promise<StageResult> {
       const texts = new Set(factItems(before).map((i) => i.text));
       const mine = flagged.filter((c) => texts.has(c.claim));
       if (!mine.length) continue;
-      const next = await reviseSpec(ctx.slug, before, mine, format, research ? research.claims.filter((c) => c.status === "supported" || c.status === "qualified").map((c) => ({ id: c.id, text: c.text, qualification: c.qualification })) : null);
+      const mineEvidence = evidence ? evidenceForClaims(evidence, [...new Set(mine.flatMap((claim) => claim.evidenceIds ?? []))]) : null;
+      const next = await reviseSpec(ctx.slug, before, mine, format, mineEvidence);
       saveSpec(ctx.slug, next, `before-factcheck-revision-${format}`, groups.find((g) => g.format === format)!.file);
       specs.set(format, next);
     }
@@ -161,8 +179,10 @@ export async function factcheckStage(ctx: RunCtx): Promise<StageResult> {
 /** Targeted revision: Claude returns only the shots it changed, which are merged and validated. */
 export async function reviseSpec(slug: string, before: VideoSpec, flagged: Claim[], format: Format, claims: unknown): Promise<VideoSpec> {
   const limit = format === "short" ? 32 : 45;
+  const targetIds = new Set(flagged.map((claim) => claim.shot).filter(Boolean));
+  const affected = before.shots.filter((shot) => targetIds.has(shot.id));
   const reply = await claudeJson<{ shots: Shot[] }>(
-    `${prompt("revise")}\n\nPer-shot narration limit: ${limit} words.\n\nFlagged claims:\n${JSON.stringify(flagged.map((c) => ({ shot: c.shot, claim: c.claim, verdict: c.verdict, correction: c.correction, note: c.note })), null, 2)}${claims ? `\n\nResearch dossier claims you may rely on:\n${JSON.stringify(claims)}` : ""}\n\nVideoSpec:\n${JSON.stringify(before)}`,
+    `${prompt("revise")}\n\nPer-shot narration limit: ${limit} words.\n\nFlagged claims:\n${JSON.stringify(flagged.map((c) => ({ shot: c.shot, evidenceIds: c.evidenceIds, claim: c.claim, verdict: c.verdict, correction: c.correction, note: c.note })), null, 2)}${claims ? `\n\nRelevant evidence and qualifications:\n${JSON.stringify(claims)}` : ""}\n\nAffected segments only:\n${JSON.stringify(affected)}`,
     {
       step: "revise",
       label: "revise",
@@ -172,7 +192,7 @@ export async function reviseSpec(slug: string, before: VideoSpec, flagged: Claim
         for (const s of r.shots) {
           const b = before.shots.find((x) => x.id === s?.id);
           if (!b) p.push(`unknown shot id ${s?.id}`);
-          else if (s.section !== b.section || s.visual?.type !== b.visual.type) p.push(`${s.id}: keep the same section and visual type`);
+          else if (s.section !== b.section || s.beatId !== b.beatId || s.visual?.type !== b.visual.type) p.push(`${s.id}: keep the same beatId, section and visual type`);
         }
         if (p.length) return p;
         return validateSpec(mergeShots(before, r.shots), { slug });
@@ -184,7 +204,7 @@ export async function reviseSpec(slug: string, before: VideoSpec, flagged: Claim
 
 export function mergeShots(spec: VideoSpec, changed: Shot[]): VideoSpec {
   const byId = new Map(changed.map((s) => [s.id, s]));
-  return { ...spec, shots: spec.shots.map((s) => (byId.has(s.id) ? { ...byId.get(s.id)!, id: s.id, section: s.section } : s)) };
+  return { ...spec, direction: { status: "draft", at: new Date().toISOString(), by: "factcheck-revision" }, shots: spec.shots.map((s) => (byId.has(s.id) ? { ...byId.get(s.id)!, id: s.id, beatId: s.beatId, section: s.section } : s)) };
 }
 
 // ---------- creative direction ----------
@@ -219,14 +239,15 @@ function directorPrompt(spec: VideoSpec, targets: string[], notes: string | unde
 
 /** Outline beats and the research claims the shots state, so visuals show the real mechanism. */
 async function directionContext(slug: string, spec: VideoSpec, format: Format) {
-  const { loadResearch, loadOutlines } = await import("./editorial");
+  const { loadEvidence, loadOutlines, loadResearch } = await import("./editorial");
   const research = loadResearch(slug);
+  const evidence = loadEvidence(slug);
   const outline = loadOutlines(slug).formats[format];
   if (!research && !outline) return "";
   const used = new Set(spec.shots.flatMap((s) => s.claims ?? []));
   return [
     outline ? `\n## Approved outline (show this progression)\n${JSON.stringify({ openingQuestion: outline.openingQuestion, structure: outline.structure, beats: outline.beats.map((b) => ({ id: b.id, role: b.role, point: b.point, visual: b.visual })), keyExample: outline.keyExample, complication: outline.complication, conclusion: outline.conclusion }, null, 1)}` : "",
-    research ? `\n## Research claims stated in the script (visuals must agree with them)\n${JSON.stringify(research.claims.filter((c) => used.has(c.id)).map((c) => ({ id: c.id, text: c.text, qualification: c.qualification })), null, 1)}\n\n## Demonstrations the research suggests\n${JSON.stringify(research.examples, null, 1)}` : "",
+    research && evidence ? `\n## Evidence stated in the script (visuals must agree, including qualifications)\n${JSON.stringify(evidenceForClaims(evidence, [...used]), null, 1)}\n\n## Relevant demonstrations\n${JSON.stringify(research.examples.filter((example) => (example.claimIds ?? []).some((id) => used.has(id))), null, 1)}` : "",
   ].join("\n");
 }
 
@@ -251,13 +272,19 @@ const DIRECT_BATCH = Number(process.env.DIRECT_BATCH ?? 12);
 export async function directStage(ctx: RunCtx): Promise<StageResult> {
   const groups = specsFor(ctx.slug, ctx.formats);
   if (!groups.length) throw new PipelineError("No storyboard yet: run the script stage first", "missing");
+  const { directionInputHash, loadEvidence, loadOutlines, loadResearch } = await import("./editorial");
   const done: string[] = [];
   const warnings: string[] = [];
   let cached = true;
   for (const g of groups) {
     let spec = g.spec;
     const fmtName = g.formats.join("+");
-    const targets = ctx.shots?.length ? ctx.shots.filter((t) => spec.shots.some((s) => s.id === t)) : spec.direction?.status === "directed" && !ctx.force ? [] : spec.shots.map((s) => s.id);
+    const evidence = loadEvidence(ctx.slug);
+    const outline = loadOutlines(ctx.slug).formats[g.format];
+    const research = loadResearch(ctx.slug);
+    const inputHash = directionInputHash(spec, outline, evidence, ctx.settings, research);
+    const directedFresh = spec.direction?.status === "directed" && spec.direction.inputHash === inputHash;
+    const targets = ctx.shots?.length ? ctx.shots.filter((t) => spec.shots.some((s) => s.id === t)) : directedFresh && !ctx.force ? [] : spec.shots.map((s) => s.id);
     if (ctx.shots?.length && groups.length === 1) {
       const unknown = ctx.shots.filter((t) => !spec.shots.some((s) => s.id === t));
       if (unknown.length) throw new PipelineError(`Unknown shot id(s): ${unknown.join(", ")}`, "invalid");
@@ -286,6 +313,7 @@ export async function directStage(ctx: RunCtx): Promise<StageResult> {
       spec = mergeDirection(current, reply, batch);
       // Unfinished batches keep the storyboard a draft, so an interrupted run resumes.
       if (i + DIRECT_BATCH < targets.length && !ctx.shots?.length) spec = { ...spec, direction: { ...spec.direction!, status: "draft", by: "claude (partial)" } };
+      if (i + DIRECT_BATCH >= targets.length && !ctx.shots?.length) spec = { ...spec, direction: { ...spec.direction!, status: "directed", inputHash, promptVersion: PROMPT_VERSIONS.direct } };
       saveSpec(ctx.slug, spec, `before-direction-${g.format}`, g.file);
     }
     const types = targets.map((t) => spec.shots.find((s) => s.id === t)!.visual.type);

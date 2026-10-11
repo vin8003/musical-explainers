@@ -13,7 +13,7 @@ import { estimateRuntime } from "../../src/schema/timeline.mjs";
 import { assetReport, assetsInputHash, describeClips, loadAssetReport } from "../stages/assets";
 import { audioInputHash, cutSpecs, describe, loadAudioManifest } from "../stages/audio";
 import {
-  loadOutlines, loadResearch, loadReviews, outlineInputHash, researchHash, researchInputHash, reviewFreshness, scriptFreshness, summarizeResearch,
+  directionInputHash, evidenceHash, factcheckItemHash, loadEvidence, loadOutlines, loadResearch, loadReviews, outlineInputHash, researchHash, researchInputHash, reviewFreshness, scriptFreshness, summarizeResearch,
 } from "../stages/editorial";
 import { codeHash, latestCandidate, specHash } from "../stages/render";
 import { factItems, ownSpec, reusableSources, specsFor } from "../stages/text";
@@ -56,10 +56,14 @@ export function computeStatus(slug: string, opts: { settings?: Settings; formats
   // research
   const research = loadResearch(slug);
   const rHash = researchHash(research);
+  const evidence = loadEvidence(slug);
+  const eHash = evidenceHash(evidence);
   const blockers = research ? researchBlockers(research) : [];
   out.research = !research
     ? { status: "missing", reason: "no research dossier yet" }
-    : research.inputHash !== researchInputHash(title, topic)
+    : !evidence || evidence.researchHash !== rHash
+      ? { status: "stale", reason: "canonical evidence is missing or out of date; it will be normalized locally" }
+      : research.inputHash !== researchInputHash(title, topic, settings)
       ? { status: "stale", reason: "the topic or the research prompt changed" }
       : blockers.length
         ? { status: "failed", reason: blockers.join("; ") }
@@ -72,7 +76,7 @@ export function computeStatus(slug: string, opts: { settings?: Settings; formats
     const o = outlines.formats[f];
     const st: StageStatus = !o
       ? { status: "missing", reason: "no outline" }
-      : o.inputHash !== outlineInputHash(rHash, settings, f)
+      : o.inputHash !== outlineInputHash(rHash, settings, f, eHash)
         ? { status: "stale", reason: o.durationKey !== formatKey(settings, f) ? "duration settings changed" : "the research changed" }
         : outlineBlockers(o).length
           ? { status: "failed", reason: outlineBlockers(o)[0] }
@@ -91,12 +95,18 @@ export function computeStatus(slug: string, opts: { settings?: Settings; formats
   }
 
   // editorial review (per format; only cuts with their own script can be reviewed)
-  out.review = combine(Object.fromEntries(formats.map((f) => [f, reviewFreshness(slug, f)])));
+  out.review = combine(Object.fromEntries(formats.map((f) => [f, reviewFreshness(slug, f, settings)])));
 
   // fact-check (shared verdicts over every cut's text)
   const sources = reusableSources(readJson<Sources | null>(paths.sources(slug), null), rHash);
-  const items = [...new Set(groups.flatMap((g) => factItems(g.spec).map((i) => i.text)))];
-  const verdict = new Map((sources?.claims ?? []).map((c) => [c.claim, c.verdict]));
+  const itemClaims = new Map<string, string[]>();
+  for (const group of groups) for (const item of factItems(group.spec)) {
+    const claimIds = group.spec.shots.find((shot) => shot.id === item.shot)?.claims ?? [];
+    itemClaims.set(item.text, [...new Set([...(itemClaims.get(item.text) ?? []), ...claimIds])]);
+  }
+  const items = [...itemClaims.keys()];
+  const currentHashes = new Map([...itemClaims].map(([text, claimIds]) => [text, factcheckItemHash(text, claimIds, evidence, settings)]));
+  const verdict = new Map((sources?.claims ?? []).filter((claim) => claim.verificationHash === currentHashes.get(claim.claim)).map((claim) => [claim.claim, claim.verdict]));
   const flagged = items.filter((i) => verdict.get(i) && verdict.get(i) !== "ok").length;
   const unchecked = items.filter((i) => !verdict.has(i)).length;
   const rawSources = readJson<Sources | null>(paths.sources(slug), null);
@@ -108,7 +118,15 @@ export function computeStatus(slug: string, opts: { settings?: Settings; formats
         ? { status: "stale", reason: (rawSources.researchHash ?? null) !== (rHash ?? null) && rawSources.claims.length ? "the research changed: every item is checked again" : `${unchecked} new or edited text item(s) not checked yet` }
         : { status: "fresh", reason: `${items.length} items ok` };
 
-  out.direct = combine(Object.fromEntries(groups.map((g) => [g.formats.join("+"), g.spec.direction?.status === "directed" ? { status: "fresh", reason: `${new Set(g.spec.shots.map((s) => s.visual.type)).size} visual systems across ${g.spec.shots.length} shots` } : { status: "missing", reason: "draft: shots still use placeholder typography" }])) as Partial<Record<Format, StageStatus>>);
+  out.direct = combine(Object.fromEntries(groups.map((g) => {
+    const expected = directionInputHash(g.spec, loadOutlines(slug).formats[g.format], evidence, settings, research);
+    const status: StageStatus = g.spec.direction?.status !== "directed"
+      ? { status: "missing", reason: "draft: shots still use placeholder typography" }
+      : g.spec.direction.inputHash !== expected
+        ? { status: "stale", reason: "script, evidence, outline, director prompt, or model settings changed" }
+        : { status: "fresh", reason: `${new Set(g.spec.shots.map((s) => s.visual.type)).size} visual systems across ${g.spec.shots.length} shots` };
+    return [g.formats.join("+"), status];
+  })) as Partial<Record<Format, StageStatus>>);
 
   const specs = cutSpecs(slug, formats);
   const union = { ...(specs.main ?? specs.short)!, shots: groups.flatMap((g) => g.spec.shots) };

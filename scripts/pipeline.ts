@@ -25,7 +25,7 @@ import { lock, paths, PipelineError, readJson } from "./core/files";
 import { fmt, FORMAT_LABEL, wordsToTarget } from "../src/schema/settings.mjs";
 import { runSettings } from "./core/settings";
 import { emit, loadState, setStage, Stage, STAGES, updateState } from "./core/state";
-import { newRunId, runSummaryLine, setUsageContext, stageSummaryLine } from "./core/usage";
+import { newRunId, runRows, runSummaryLine, setUsageContext, stageSummaryLine } from "./core/usage";
 import { computeStatus } from "./core/status";
 import { assetsStage } from "./stages/assets";
 import { audioStage, DurationError } from "./stages/audio";
@@ -49,6 +49,8 @@ const RUNNERS: Record<Stage, (ctx: RunCtx) => Promise<StageResult>> = {
   qa: async (ctx) => (await import("./stages/qa")).qaStage(ctx),
   package: async (ctx) => (await import("./stages/package")).packageStage(ctx),
 };
+
+const executionMetrics = { stageRuns: 0, cacheHits: 0, stageFailures: 0 };
 
 function parseArgs(argv: string[]) {
   const flags: Record<string, string | boolean> = {};
@@ -78,8 +80,14 @@ async function runStage(stage: Stage, ctx: RunCtx) {
   console.log(`\n== ${stage} ==`);
   emit({ event: "stage", stage, status: "running" });
   setStage(ctx.slug, stage, { status: "running", startedAt: started, endedAt: undefined, error: null });
+  executionMetrics.stageRuns++;
+  updateState(ctx.slug, (s) => { if (s.run) s.run.metrics = { ...executionMetrics }; });
   try {
     const r = await RUNNERS[stage](ctx);
+    if (r.cached) {
+      executionMetrics.cacheHits++;
+      updateState(ctx.slug, (s) => { if (s.run) s.run.metrics = { ...executionMetrics }; });
+    }
     setStage(ctx.slug, stage, { status: "done", endedAt: new Date().toISOString(), summary: r.summary, warnings: r.warnings ?? [], inputHash: r.inputHash, error: null });
     console.log(`  ${r.cached ? "cached" : "done"}: ${r.summary}`);
     console.log(`  usage: ${stageSummaryLine(stage, started)}`);
@@ -87,6 +95,8 @@ async function runStage(stage: Stage, ctx: RunCtx) {
     emit({ event: "stage", stage, status: "done", summary: r.summary, cached: r.cached });
     return r;
   } catch (e) {
+    executionMetrics.stageFailures++;
+    updateState(ctx.slug, (s) => { if (s.run) s.run.metrics = { ...executionMetrics }; });
     const err = e as PipelineError;
     const cancelled = cancelling;
     setStage(ctx.slug, stage, { status: cancelled ? "cancelled" : "failed", endedAt: new Date().toISOString(), error: cancelled ? { message: "cancelled", kind: "cancelled" } : { message: err.message, kind: err.kind, hint: err.hint } });
@@ -115,8 +125,14 @@ async function main() {
   }
   // Usage run: a budget stop or failure keeps the run (resume restores its totals from the ledger);
   // --fresh or a finished run starts a new one with new counters.
-  const prior = loadState(slug).usage;
+  const priorState = loadState(slug);
+  const prior = priorState.usage;
   const usageRun = !prior || prior.completedAt || flags.fresh ? { runId: newRunId(), startedAt: new Date().toISOString() } : prior;
+  const savedMetrics = priorState.run?.metrics;
+  const sameRun = prior?.runId === usageRun.runId && !prior.completedAt && !flags.fresh;
+  executionMetrics.stageRuns = sameRun ? savedMetrics?.stageRuns ?? 0 : 0;
+  executionMetrics.cacheHits = sameRun ? savedMetrics?.cacheHits ?? 0 : 0;
+  executionMetrics.stageFailures = sameRun ? savedMetrics?.stageFailures ?? 0 : 0;
   updateState(slug, (s) => { s.usage = { runId: usageRun.runId, startedAt: usageRun.startedAt, stop: null }; });
   setUsageContext({ slug, runId: usageRun.runId, budgets: snap.settings.budgets });
   const ctx: RunCtx = {
@@ -156,7 +172,7 @@ async function main() {
     console.log(`  ${FORMAT_LABEL[f]}: target ${fmt(d.targetSeconds)}, allowed ${fmt(d.minSeconds)}-${fmt(d.maxSeconds)} (settings: ${snap.source})`);
   }
   emit({ event: "settings", settings: ctx.settings, source: snap.source });
-  updateState(slug, (s) => { s.run = { at: new Date().toISOString(), settings: ctx.settings, source: snap.source, formats: ctx.formats, pid: process.pid }; });
+  updateState(slug, (s) => { s.run = { at: new Date().toISOString(), settings: ctx.settings, source: snap.source, formats: ctx.formats, pid: process.pid, metrics: { ...executionMetrics } }; });
   const single = typeof flags.stage === "string" ? (flags.stage as Stage) : null;
   if (single && !STAGES.includes(single)) throw new PipelineError(`Unknown stage "${single}" (${STAGES.join(", ")})`, "invalid");
   const from = typeof flags.from === "string" ? STAGES.indexOf(flags.from as Stage) : 0;
@@ -239,6 +255,13 @@ async function main() {
     finished = true;
   } finally {
     console.log(`\n[usage] this run: ${runSummaryLine()}`);
+    try {
+      const { recordBenchmark } = await import("./core/benchmark");
+      const benchmark = recordBenchmark(slug, usageRun.runId, ctx.settings, runRows(), executionMetrics);
+      console.log(`[benchmark] ${benchmark.quality.status} · ${benchmark.efficiency.calls} calls, ${benchmark.efficiency.repairs} repairs${benchmark.comparison ? ` · ${benchmark.comparison.qualityRegression ? "quality regression" : "compared with prior run"}` : " · baseline saved"}`);
+    } catch (e) {
+      console.log(`[benchmark] could not save snapshot: ${(e as Error).message}`);
+    }
     if (finished) updateState(slug, (s) => { if (s.usage) s.usage.completedAt = new Date().toISOString(); });
     currentStage = null;
     release();

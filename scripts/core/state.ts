@@ -41,7 +41,7 @@ export type ProductionState = {
   candidates: Candidate[];
   approved?: string | null;
   /** The settings snapshot of the latest pipeline run (a later settings change doesn't rewrite it). */
-  run?: { at: string; settings: unknown; source: string; formats: string[]; pid: number } | null;
+  run?: { at: string; settings: unknown; source: string; formats: string[]; pid: number; metrics?: { stageRuns: number; cacheHits: number; stageFailures: number } } | null;
   /** Last stage that completed successfully, for "resume from here". */
   checkpoint?: Stage | null;
   /** Usage run (see scripts/core/usage.ts). A budget stop is kept in `stop` so it can be inspected after the process exits. */

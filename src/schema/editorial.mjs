@@ -7,7 +7,7 @@
 //   specs/<slug>.review.json     { formats: { main, short } } editorial reviews (depend on the script text)
 
 /** Bump when a prompt changes in a way that should invalidate what it produced. */
-export const PROMPT_VERSIONS = { research: 1, outline: 1, script: 2, review: 1, factcheck: 2, direct: 2 };
+export const PROMPT_VERSIONS = { research: 1, outline: 2, script: 3, review: 2, factcheck: 3, direct: 3 };
 
 export const CLAIM_STATUSES = ["supported", "qualified", "insufficient", "excluded"];
 /** Claims a script may state (qualified ones only with their qualification). */
@@ -15,6 +15,8 @@ export const USABLE = ["supported", "qualified"];
 export const SOURCE_KINDS = ["primary", "authoritative", "secondary"];
 export const BEAT_ROLES = ["hook", "setup", "prerequisite", "mechanism", "example", "misconception", "complication", "resolution", "recap"];
 export const STRUCTURES = ["causal-chain", "worked-example", "investigation", "comparison", "myth-busting", "journey", "other"];
+export const REVIEW_SEVERITIES = ["blocking", "major", "minor"];
+export const REVIEW_FIELDS = ["narration", "lyric", "headline", "purpose", "brief", "music", "outline", "global"];
 
 /** Editorial rubric, 0-5 each. Pass rules are in reviewVerdict. */
 export const RUBRIC = {
@@ -202,13 +204,19 @@ export function validateReview(r, shotIds) {
   if (!isObj(r)) return ["review must be a JSON object"];
   if (!isObj(r.scores)) p.push("scores is required");
   else for (const k of Object.keys(RUBRIC)) if (!isNum(r.scores[k]) || r.scores[k] < 0 || r.scores[k] > 5) p.push(`scores.${k} must be 0-5`);
+  const target = (x, i, where) => {
+    if (!REVIEW_FIELDS.includes(x?.field)) p.push(`${where}[${i}].field must be one of ${REVIEW_FIELDS.join(", ")}`);
+    if (x?.segmentId != null && shotIds && !shotIds.includes(x.segmentId)) p.push(`${where}[${i}].segmentId "${x.segmentId}" is not a segment id`);
+    if (x?.segmentId == null && !["global", "brief", "music", "outline"].includes(x?.field)) p.push(`${where}[${i}]: ${x?.field ?? "field"} findings need a segmentId`);
+  };
   if (!Array.isArray(r.blocking)) p.push("blocking must be a list (empty when nothing blocks)");
-  else r.blocking.forEach((b, i) => { if (!isStr(b?.problem)) p.push(`blocking[${i}].problem is required`); });
+  else r.blocking.forEach((b, i) => { if (!isStr(b?.problem)) p.push(`blocking[${i}].problem is required`); target(b, i, "blocking"); });
   if (!Array.isArray(r.findings)) p.push("findings must be a list");
   else r.findings.forEach((f, i) => {
     if (!isStr(f?.problem) || !isStr(f?.fix)) p.push(`findings[${i}] needs problem and fix`);
     if (f?.criterion != null && !(f.criterion in RUBRIC)) p.push(`findings[${i}].criterion must be one of ${Object.keys(RUBRIC).join(", ")}`);
-    if (f?.shot != null && shotIds && !shotIds.includes(f.shot)) p.push(`findings[${i}].shot "${f.shot}" is not a shot id`);
+    if (!REVIEW_SEVERITIES.includes(f?.severity)) p.push(`findings[${i}].severity must be one of ${REVIEW_SEVERITIES.join(", ")}`);
+    target(f, i, "findings");
   });
   if (!isStr(r.summary)) p.push("summary is required");
   return p;
@@ -225,6 +233,7 @@ export function reviewVerdict(review) {
   const s = review?.scores ?? {};
   const keys = Object.keys(RUBRIC);
   for (const b of review?.blocking ?? []) reasons.push(`blocking: ${b.problem}`);
+  for (const f of review?.findings ?? []) if (f.severity === "blocking") reasons.push(`blocking finding: ${f.problem}`);
   for (const k of keys) if (!(s[k] >= PASS_RULES.minEach)) reasons.push(`${k} scored ${s[k] ?? "?"} (minimum ${PASS_RULES.minEach})`);
   for (const [k, min] of Object.entries(PASS_RULES.critical)) if (s[k] >= PASS_RULES.minEach && !(s[k] >= min)) reasons.push(`${k} scored ${s[k]} (needs ${min})`);
   const avg = keys.reduce((n, k) => n + (isNum(s[k]) ? s[k] : 0), 0) / keys.length;
@@ -234,5 +243,5 @@ export function reviewVerdict(review) {
 
 /** The text a review judged: changing it makes the review stale. */
 export function scriptText(spec) {
-  return (spec?.shots ?? []).map((s) => ({ id: s.id, section: s.section, n: s.narration ?? null, l: s.lyric ?? null }));
+  return (spec?.shots ?? []).map((s) => ({ id: s.id, beatId: s.beatId ?? null, section: s.section, purpose: s.purpose ?? null, n: s.narration ?? null, l: s.lyric ?? null, h: s.headline ?? null, claims: s.claims ?? [] }));
 }

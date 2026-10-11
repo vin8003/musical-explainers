@@ -10,10 +10,10 @@ Blocking problems (list them in "blocking"; any one fails the script regardless 
 - a Short that only makes sense after watching the long video, or that is just a truncated long script
 - a misleading analogy or diagram description that would leave a wrong mental model
 
-Findings: name the specific shot, quote or paraphrase the weak passage, say which criterion it fails and why, and give an actionable fix (what to say instead, what to cut, what example to use). Most important first, at most 15.
+Findings: rank by severity (`blocking`, `major`, `minor`) and give an actionable repair tied to one exact segment field. Use the stable segment `id` and one field from `narration`, `lyric`, `headline`, `purpose`, `brief`, `music`, `outline`, or `global`. Prefer narration or lyric when the weakness is local. Use `global` or `outline` only when the issue spans segments or the thesis/evidence itself must change. Most important first, at most 15. Every finding needs a specific problem and a concrete fix.
 
 Return ONLY JSON, no prose, no code fences:
 { "scores": { "accuracy": n, "clarity": n, "progression": n, "specificity": n, "examples": n, "engagement": n, "memorability": n, "formatFit": n, "music": n, "redundancy": n },
-  "blocking": [ { "shot"?: string, "problem": string } ],
-  "findings": [ { "shot": string, "criterion": string, "severity": "major" | "minor", "problem": string, "fix": string } ],
+  "blocking": [ { "segmentId"?: string, "field": "narration" | "lyric" | "headline" | "purpose" | "brief" | "music" | "outline" | "global", "problem": string } ],
+  "findings": [ { "segmentId"?: string, "field": "narration" | "lyric" | "headline" | "purpose" | "brief" | "music" | "outline" | "global", "criterion": string, "severity": "blocking" | "major" | "minor", "problem": string, "fix": string } ],
   "summary": string (2-3 sentences: what the viewer learns, and the biggest weakness) }

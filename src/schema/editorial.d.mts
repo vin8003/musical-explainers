@@ -59,8 +59,8 @@ export type Outline = {
 
 export type ReviewReply = {
   scores: Record<string, number>;
-  blocking: { shot?: string; problem: string }[];
-  findings: { shot?: string; criterion?: string; severity?: "major" | "minor"; problem: string; fix: string }[];
+  blocking: { segmentId?: string; field: "narration" | "lyric" | "headline" | "purpose" | "brief" | "music" | "outline" | "global"; problem: string }[];
+  findings: { segmentId?: string; field: "narration" | "lyric" | "headline" | "purpose" | "brief" | "music" | "outline" | "global"; criterion?: string; severity: "blocking" | "major" | "minor"; problem: string; fix: string }[];
   summary: string;
 };
 export type Verdict = { pass: boolean; average: number; reasons: string[] };
@@ -71,6 +71,8 @@ export declare const USABLE: ClaimStatus[];
 export declare const SOURCE_KINDS: string[];
 export declare const BEAT_ROLES: string[];
 export declare const STRUCTURES: string[];
+export declare const REVIEW_SEVERITIES: string[];
+export declare const REVIEW_FIELDS: string[];
 export declare const RUBRIC: Record<string, string>;
 export declare const PASS_RULES: { minEach: number; minAverage: number; critical: Record<string, number> };
 export declare function claimMap(research: Research | null | undefined): Map<string, ResearchClaim>;

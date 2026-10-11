@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "slug": "how-does-the-internet-work",
+      "name": "Internet: packets, routing, and recovery",
+      "formats": ["main", "short"],
+      "expectedClaims": [
+        { "id": "packet-switching", "claimIds": ["packet-switching-basic"], "essential": true },
+        { "id": "packet-addresses", "claimIds": ["packet-header-addresses"], "essential": true },
+        { "id": "router-hop", "claimIds": ["routers-forward-by-address"], "essential": true },
+        { "id": "local-routing", "claimIds": ["no-global-routing-map"], "essential": true },
+        { "id": "transport-recovery", "claimIds": ["tcp-sequence-numbers", "tcp-ack-retransmit"], "essential": true },
+        { "id": "fiber-medium", "claimIds": ["fiber-optic-medium"], "essential": false }
+      ],
+      "essentialExplanations": [
+        { "id": "packets-are-addressed", "termsAll": ["packet", "address"], "formats": ["main", "short"] },
+        { "id": "routers-forward-locally", "termsAll": ["router", "destination", "neighbor"], "formats": ["main", "short"] },
+        { "id": "tcp-reassembles-or-recovers", "termsAny": ["sequence number", "number on each piece"], "formats": ["main", "short"] }
+      ],
+      "knownMisconceptions": [
+        { "id": "reserved-circuit", "correctionTermsAny": ["no circuit is reserved", "no line reserved", "no dedicated line"] },
+        { "id": "master-route-map", "correctionTermsAny": ["no master map", "no router holds a map", "no single router"] },
+        { "id": "per-packet-fastest-route", "correctionTermsAny": ["doesn't re-pick a path per packet", "not a gps", "routing information changes"] }
+      ],
+      "sourceExpectations": [
+        { "claimId": "packet-switching-basic", "minSources": 1, "kindsAny": ["primary", "authoritative"], "verificationStatusesAny": ["fetched"] },
+        { "claimId": "routers-forward-by-address", "minSources": 1, "kindsAny": ["primary", "authoritative"], "verificationStatusesAny": ["fetched"] }
+      ],
+      "editorialAcceptance": { "minAverage": 3.8, "critical": { "accuracy": 4, "clarity": 4, "progression": 3 } }
+    },
+    {
+      "slug": "what-do-mitochondria-do",
+      "name": "Mitochondria: ATP and cellular demand",
+      "formats": ["main"],
+      "expectedClaims": [
+        { "id": "nutrients-and-oxygen-to-atp", "termsAll": ["nutrients", "oxygen", "atp"], "essential": true },
+        { "id": "energy-demand-varies", "termsAll": ["heart", "muscle", "mitochondria"], "essential": true },
+        { "id": "mitochondrial-dna", "termsAll": ["mitochondria", "dna", "nucleus"], "essential": false },
+        { "id": "endosymbiotic-origin", "termsAll": ["bacteria", "engulfed"], "essential": false }
+      ],
+      "essentialExplanations": [
+        { "id": "atp-is-cell-fuel", "termsAll": ["atp", "cells", "power"] },
+        { "id": "energy-demand-matters", "termsAll": ["heart", "muscle", "energy"] }
+      ],
+      "knownMisconceptions": [
+        { "id": "food-is-energy", "correctionTermsAll": ["atp", "nutrients", "oxygen"] }
+      ],
+      "sourceExpectations": [
+        { "textContains": "mitochondria convert nutrients and oxygen into atp", "minSources": 1, "domainsAny": ["nature.com", "ncbi.nlm.nih.gov", "nih.gov"] }
+      ],
+      "editorialAcceptance": { "minAverage": 3.8, "critical": { "accuracy": 4, "clarity": 4, "progression": 3 } }
+    }
+  ],
+  "regressions": [
+    { "id": "unsupported-thesis", "expectedGate": "researchBlockers", "criterion": "The pipeline blocks writing when a thesis claim lacks usable opened evidence." },
+    { "id": "broken-evidence-reference", "expectedGate": "evidenceReferences", "criterion": "The pipeline rejects a claim or source reference that does not exist." },
+    { "id": "off-target-duration", "expectedGate": "duration", "criterion": "The pipeline rejects a script or render outside the configured duration acceptance window." }
+  ]
+}

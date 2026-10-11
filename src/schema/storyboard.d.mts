@@ -54,6 +54,8 @@ export type Visual =
 
 export type Shot = {
   id: string;
+  /** Stable reference to the outline beat this script segment implements. */
+  beatId?: string;
   section: Section;
   /** Editorial: what this shot is for. Read by reviewers and QA, ignored by the renderer. */
   purpose?: string;
@@ -77,6 +79,8 @@ export type Editorial = {
   /** Which outline/settings this script was written from (for cache invalidation). */
   outlineHash?: string;
   researchHash?: string;
+  evidenceHash?: string;
+  scriptInputHash?: string;
   durationKey?: string;
   promptVersion?: number;
   /** Runtime estimate when the script was accepted. */
@@ -96,7 +100,7 @@ export type VideoSpec = {
   brief?: { audience?: string; learningGoal?: string; hook?: string };
   world?: World;
   /** Pipeline bookkeeping: "draft" until the direct stage has chosen visuals. */
-  direction?: { status: "draft" | "directed"; at?: string; by?: string };
+  direction?: { status: "draft" | "directed"; at?: string; by?: string; inputHash?: string; promptVersion?: number };
   music: {
     bpm: number;
     key?: string;

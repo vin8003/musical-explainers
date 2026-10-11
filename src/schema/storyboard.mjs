@@ -53,7 +53,7 @@ export const SCENES_3D = {
   "fiber-packets": "Light pulses (bits) racing through the glass fibres of a cut-away undersea cable; camera starts on the cable end and travels with the pulses. 10 s.",
 };
 
-export const EDITORIAL = ["brief", "purpose", "notes", "direction", "editorial", "claims"];
+export const EDITORIAL = ["brief", "purpose", "notes", "direction", "editorial", "claims", "beatId"];
 
 /** A storyboard is written for one format; older storyboards (no format) serve both cuts. */
 export const SPEC_FORMATS = ["main", "short"];
@@ -220,6 +220,7 @@ export function validateSpec(spec, { slug } = {}) {
     if (!ID_RE.test(s.id ?? "")) p(`${at}: id must be kebab-case`);
     else if (ids.has(s.id)) p(`${at}: duplicate id`);
     ids.add(s.id);
+    if (s.beatId != null && !ID_RE.test(s.beatId)) p(`${at}: beatId must be a stable kebab-case outline beat id`);
     if (!SECTIONS.includes(s.section)) p(`${at}: section must be one of ${SECTIONS.join(", ")}`);
     for (const k of ["narration", "lyric", "headline", "purpose"]) if (s[k] != null && typeof s[k] !== "string") p(`${at}: ${k} must be text`);
     if (!isStr(s.narration) && !isStr(s.lyric) && s.visual?.type !== "title") p(`${at}: needs narration or a lyric`);

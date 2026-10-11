@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { durationSupport, researchBlockers, reviewVerdict, validateOutline, validateResearch, validateReview } from "../src/schema/editorial.mjs";
+import { evidenceForClaims, evidenceFromResearch, validateEvidenceStore } from "../src/schema/evidence.mjs";
 import { DEFAULT_SETTINGS } from "../src/schema/settings.mjs";
 
 const src = (n, accessed = "fetched") => ({ url: `https://example.org/${n}`, title: `S${n}`, passage: "p", supports: "s", kind: "primary", accessed });
@@ -18,6 +19,28 @@ const dossier = () => ({
 });
 
 test("a complete dossier validates", () => assert.deepEqual(validateResearch(dossier()), []));
+
+test("canonical evidence keeps stable claim/source IDs, passage, qualifications, confidence, and provenance", () => {
+  const research = dossier();
+  research.claims[0].status = "qualified";
+  research.claims[0].qualification = "only in the tested context";
+  const store = evidenceFromResearch(research, { researchHash: "research-hash", promptVersion: 4, topic: "sample" });
+  const again = evidenceFromResearch(research, { researchHash: "research-hash", promptVersion: 4, topic: "sample" });
+  assert.equal(store.claims[0].id, "c1");
+  assert.equal(store.claims[0].confidence, "qualified");
+  assert.equal(store.claims[0].qualification, "only in the tested context");
+  assert.equal(store.claims[0].provenance.topic, "sample");
+  assert.equal(store.sources[0].id, again.sources[0].id);
+  assert.ok(store.sources.some((source) => source.url === "https://example.org/1" && source.passage === "p" && source.verificationStatus === "fetched"));
+  assert.deepEqual(validateEvidenceStore(store), []);
+  const brokenLink = structuredClone(store);
+  brokenLink.claims[0].sourceIds = [];
+  assert.ok(validateEvidenceStore(brokenLink).some((problem) => /does not link back/.test(problem)));
+  const compact = evidenceForClaims(store, ["c1"]);
+  assert.deepEqual(compact.claims.map((claim) => claim.id), ["c1"]);
+  assert.ok(compact.sources.length === 1 && compact.sources[0].claimIds.every((id) => id === "c1"));
+  assert.ok(!JSON.stringify(compact).includes('"id": "c6"'));
+});
 
 test("a supported claim must rest on a source that was actually opened", () => {
   const d = dossier();
@@ -101,7 +124,7 @@ test("review verdict: a high average cannot buy back a weak critical criterion o
   assert.equal(weakClarity.pass, false);
   assert.match(weakClarity.reasons.join(), /clarity scored 3 \(needs 4\)/);
   assert.ok(weakClarity.average > 4.0);
-  const blocked = reviewVerdict(review({}, [{ problem: "central claim is unsupported" }]));
+  const blocked = reviewVerdict(review({}, [{ field: "global", problem: "central claim is unsupported" }]));
   assert.equal(blocked.pass, false);
   assert.match(blocked.reasons.join(), /blocking: central claim/);
   assert.equal(reviewVerdict(review({ redundancy: 2 })).pass, false);
@@ -115,10 +138,12 @@ test("review replies are validated", () => {
   assert.match(p, /scores\.accuracy must be 0-5/);
   assert.match(p, /blocking must be a list/);
   assert.match(p, /needs problem and fix/);
-  // Shot ids are checked only when the caller asks (the pipeline drops unknown references instead of failing).
-  const ref = { ...review(), findings: [{ shot: "ghost", problem: "p", fix: "f" }] };
+  // Segment ids and the exact field to repair are checked before accepting a review.
+  const ref = { ...review(), findings: [{ segmentId: "ghost", field: "narration", severity: "major", criterion: "clarity", problem: "p", fix: "f" }] };
   assert.deepEqual(validateReview(ref), []);
-  assert.match(validateReview(ref, ["a"]).join(), /not a shot id/);
+  assert.match(validateReview(ref, ["a"]).join(), /not a segment id/);
+  const untargeted = { ...review(), findings: [{ field: "narration", severity: "major", problem: "p", fix: "f" }] };
+  assert.match(validateReview(untargeted, ["a"]).join(), /need a segmentId/);
 });
 
 test("the central thesis needs opened, quoted, adequately scoped evidence, not just a 'supported' label", () => {

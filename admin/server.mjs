@@ -611,6 +611,7 @@ function detail(slug) {
     candidates: cands,
     qa,
     package: pkg,
+    benchmark: readJson(join(OUT, slug, "benchmark.json"), null),
     jobs: jobs.filter((j) => j.slug === slug).map(jobSummary).reverse(),
   };
 }
