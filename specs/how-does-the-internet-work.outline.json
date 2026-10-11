@@ -1,0 +1,285 @@
+{
+  "version": 1,
+  "formats": {
+    "main": {
+      "openingQuestion": "When you hit send on a video, what actually happens to get it across the world and onto someone else's screen?",
+      "understandingChange": "Before: the viewer imagines their video flying as one continuous stream over a dedicated wire straight to the recipient. After: they understand it's chopped into thousands of independently addressed packets, forwarded one router-hop at a time with no reserved circuit and no global map, checked and reassembled by TCP, and physically carried as light pulses through glass fiber — including under oceans — at roughly two-thirds lightspeed.",
+      "structure": "causal-chain",
+      "prerequisites": [
+        "packet: a small chunk of data traveling with its own header",
+        "IP address: the fixed numeric address every packet's header carries",
+        "router: a device that forwards a packet toward its destination using only its own local table",
+        "routing table: a router's local 'for this address, send to this next hop' list — not a map of everything",
+        "TCP/IP: IP addresses and forwards packets independently; TCP (stacked on top) orders, acknowledges, and resends them",
+        "fiber-optic cable: glass strand carrying data as light pulses, the medium behind most long-distance links"
+      ],
+      "beats": [
+        {
+          "id": "hook-no-wire-for-video",
+          "role": "hook",
+          "point": "Pose the puzzle: your video looks like it travels as one smooth beam from your phone to your friend's screen, but that's not what's happening at all.",
+          "claimIds": [],
+          "seconds": 25,
+          "visual": "A video file shown as a single glowing stream leaving a phone, then the stream visibly shatters into a cloud of small labeled pieces mid-air as the narration undercuts the assumption."
+        },
+        {
+          "id": "define-the-pieces",
+          "role": "prerequisite",
+          "point": "Quickly define the four pieces needed to follow the rest: packet, IP address, router, and the idea of a routing table as a local 'next hop' list, not a full map.",
+          "claimIds": [
+            "packet-header-addresses"
+          ],
+          "seconds": 35,
+          "visual": "Fast on-screen glossary cards: a small boxed 'packet' with a header tag, an IP address stamped like a return address, a router icon with a tiny notebook (its routing table) instead of a world map."
+        },
+        {
+          "id": "splitting-into-packets",
+          "role": "mechanism",
+          "point": "The sending device slices the video into many small packets, each stamped with its own source and destination address, each one independent — no packet is tied to the others or to a reserved line.",
+          "claimIds": [
+            "packet-switching-basic",
+            "host-splits-data",
+            "packet-header-addresses",
+            "datagram-independence"
+          ],
+          "seconds": 45,
+          "visual": "The shattered cloud from the hook resolves into orderly numbered postcards, each gaining a visible 'from' and 'to' stamp; no connecting line is drawn between any of them."
+        },
+        {
+          "id": "why-not-a-phone-line",
+          "role": "setup",
+          "point": "Explain why this chopped-up design exists at all: in the early 1960s researchers found reserving a dedicated phone-style circuit for every exchange was a bad fit for bursty computer traffic, so Baran, Davies, and Kleinrock independently worked out packet switching instead, which became the ARPANET in 1969.",
+          "claimIds": [
+            "circuit-switching-rejected",
+            "packet-switching-pioneers",
+            "arpanet-origin"
+          ],
+          "seconds": 40,
+          "visual": "Split screen: an old switchboard operator plugging in one dedicated cable per call versus a fan of small postcards leaving the same sender at once; a 1969 ARPANET map sketch appears briefly."
+        },
+        {
+          "id": "hop-by-hop-forwarding",
+          "role": "mechanism",
+          "point": "Every router a packet meets reads only its destination address, checks its own local table, and passes it to the next router — one hop at a time, with no router owning a map of the whole internet, across a voluntary 'network of networks' that doesn't remember any packet after forwarding it.",
+          "claimIds": [
+            "routers-forward-by-address",
+            "no-global-routing-map",
+            "network-of-networks",
+            "gateways-stateless"
+          ],
+          "seconds": 50,
+          "visual": "Postcards move through a chain of small sorting-office icons on a stylized world map; each office lights up only the next office over, never the full route, and forgets the postcard the instant it's handed off."
+        },
+        {
+          "id": "traceroute-worked-example",
+          "role": "example",
+          "point": "A concrete worked example: running the traceroute command shows the real chain of router hops a packet takes to reach a website, often crossing multiple cities or countries, confirming the hop-by-hop, no-global-map picture is literally observable.",
+          "claimIds": [
+            "routers-forward-by-address",
+            "no-global-routing-map"
+          ],
+          "seconds": 40,
+          "visual": "A terminal window runs traceroute live; each returned line animates a new pin dropping on a world map, tracing a jagged real path hop by hop."
+        },
+        {
+          "id": "the-rerouting-myth",
+          "role": "misconception",
+          "point": "Correct the popular idea that routers act like a GPS app, scanning for the single fastest, least-busy path for every packet in real time; ordinarily packets to the same destination keep following the same path, and routes only change when the network itself changes — a failure, an update, or deliberate load-splitting.",
+          "claimIds": [
+            "packets-can-reroute-on-change"
+          ],
+          "seconds": 40,
+          "visual": "A GPS-style 'recalculating route' animation flashes over the map, then gets crossed out; replaced by the same fixed path repeating calmly until one link visibly breaks and only then does the path jump to a detour."
+        },
+        {
+          "id": "tcp-makes-it-whole",
+          "role": "mechanism",
+          "point": "Because IP packets can arrive late, out of order, duplicated, or not at all, a second protocol — TCP, designed by Cerf and Kahn to let independent networks interconnect — stamps a sequence number on the data and has the receiver acknowledge what arrived, so the sender resends anything missing until the video is whole and in order.",
+          "claimIds": [
+            "layering-ip-vs-tcp",
+            "tcpip-origin",
+            "tcp-sequence-numbers",
+            "tcp-ack-retransmit",
+            "tcp-handles-loss-duplication-reorder"
+          ],
+          "seconds": 50,
+          "visual": "Postcards arrive at a mailbox out of order and one is missing; a numbered grid snaps each postcard into its correct slot, a blank slot flashes red, and a 'request resend' arrow fires back across the map until it fills in."
+        },
+        {
+          "id": "the-real-wires-are-glass",
+          "role": "complication",
+          "point": "Zoom out to the physical layer: almost none of this happens over the air — the vast majority of long-distance and international traffic rides as pulses of light through glass fiber-optic cable, including hundreds of cables laid across ocean floors, with light slowed to about two-thirds its vacuum speed by the glass itself.",
+          "claimIds": [
+            "fiber-optic-medium",
+            "fiber-light-speed",
+            "submarine-cable-count",
+            "submarine-cables-carry-most-traffic"
+          ],
+          "seconds": 50,
+          "visual": "The map zooms into a cross-section of an undersea cable, showing a pulse of light physically racing down a glass core beneath an animated ocean, while a world map lights up with hundreds of real submarine cable routes."
+        },
+        {
+          "id": "full-journey-resolution",
+          "role": "resolution",
+          "point": "Resolve the opening question: hitting send launches thousands of independently addressed postcards that fan out hop by hop with no reserved line and no master map, get renumbered and verified by TCP, and physically travel as light through glass — arriving back together as the same video on the other screen.",
+          "claimIds": [
+            "packet-switching-basic",
+            "no-global-routing-map",
+            "tcp-ack-retransmit",
+            "fiber-optic-medium"
+          ],
+          "seconds": 30,
+          "visual": "A single wide shot replays the whole route in fast-forward: splitting, hopping across the sorting-office map, diving under the ocean as light, then reassembling into the original video on a phone screen."
+        },
+        {
+          "id": "one-hop-at-a-time-recap",
+          "role": "recap",
+          "point": "Leave the memorable takeaway: no dedicated line, no single map, just one hop at a time — and a number on every piece so nothing gets lost.",
+          "claimIds": [],
+          "seconds": 20,
+          "visual": "Final freeze-frame of the postcard-and-sorting-office analogy with the words 'one hop at a time' stamped across the map like a postmark."
+        }
+      ],
+      "keyExample": {
+        "description": "Running traceroute from a home computer to an ordinary website reveals the actual sequence of router hops a packet takes — often spanning several cities or countries — making the abstract 'hop-by-hop, no global map' mechanism directly observable.",
+        "claimIds": [
+          "routers-forward-by-address",
+          "no-global-routing-map"
+        ]
+      },
+      "complication": {
+        "description": "Routers don't behave like a GPS app re-scanning for the fastest, least-congested path for every packet in real time. Ordinary destination-based routing keeps sending packets to the same destination along the same path until the network's own topology changes — a failure, a table update, or deliberate traffic-splitting across equal links.",
+        "claimIds": [
+          "packets-can-reroute-on-change"
+        ]
+      },
+      "conclusion": "Hitting send doesn't launch a beam down a dedicated wire — it launches thousands of independently addressed, numbered packets that get passed one router-hop at a time through a cooperating web of networks with no central map, get checked and reassembled by TCP, and spend most of the trip as pulses of light racing through glass fiber, including under the ocean, before snapping back together as the same video on someone else's screen.",
+      "longFormOnly": [
+        "History of packet switching: Baran, Davies, Kleinrock, and the 1969 ARPANET launch",
+        "Why circuit switching was rejected for bursty computer traffic",
+        "Cerf and Kahn's design of TCP/IP for internetworking separately-run networks",
+        "IP fragmentation of oversized datagrams mid-route",
+        "Hands-on traceroute demonstration of real router hops",
+        "Exact fiber refractive index and light-speed-in-glass figures",
+        "Submarine cable system counts and the network-of-networks ownership structure"
+      ],
+      "coreInsight": "Your video doesn't travel as one continuous stream — it's chopped into separately addressed packets that get forwarded router-hop by router-hop with no reserved line and no master map, which is exactly why the internet keeps working even when parts of it break.",
+      "chorus": {
+        "line": "No line reserved, no master map — just one hop at a time.",
+        "reinforces": "Connectionless, hop-by-hop packet forwarding with no dedicated circuit and no global routing map"
+      },
+      "fit": {
+        "verdict": "fits",
+        "note": "Eleven beats total 425s, within the 357-483s allowed range and close to the 420s target; no filler was added — history, the misconception, TCP reliability, and the physical fiber layer are all load-bearing parts of the causal chain from 'hit send' to 'arrives on screen.'"
+      },
+      "format": "main",
+      "inputHash": "65d58c1b4f49a2d7",
+      "researchHash": "92ef3a29598b410f",
+      "durationKey": "main:420/300-600@156wpm±0.15",
+      "at": "2026-10-10T18:10:46.673Z",
+      "promptVersion": 1
+    },
+    "short": {
+      "openingQuestion": "When you hit send on a video, how does it cross the world without a dedicated line, and still arrive perfectly?",
+      "understandingChange": "Before: a video travels as one stream down a reserved line. After: it's chopped into numbered, addressed packets that routers forward hop by hop, and the receiver reorders them and asks for resends.",
+      "structure": "myth-busting",
+      "prerequisites": [
+        "packet",
+        "router"
+      ],
+      "beats": [
+        {
+          "id": "hook-no-line",
+          "role": "hook",
+          "point": "Your video doesn't travel as one stream down a reserved line like a phone call; it gets chopped into thousands of separate pieces.",
+          "claimIds": [
+            "packet-switching-basic",
+            "datagram-independence",
+            "host-splits-data"
+          ],
+          "seconds": 9,
+          "visual": "A phone-call wire labeled 'myth' shatters into thousands of small glowing packets."
+        },
+        {
+          "id": "addressed-postcards",
+          "role": "mechanism",
+          "point": "Each packet is like a postcard: its header carries its own source and destination address.",
+          "claimIds": [
+            "packet-header-addresses",
+            "packet-switching-basic"
+          ],
+          "seconds": 9,
+          "visual": "Packets shown as postcards stamped FROM and TO."
+        },
+        {
+          "id": "hop-by-hop",
+          "role": "example",
+          "point": "Routers read only the destination address and pass each packet to the next hop using a local table. No router holds a map of the whole internet.",
+          "claimIds": [
+            "routers-forward-by-address",
+            "no-global-routing-map"
+          ],
+          "seconds": 11,
+          "visual": "Postcards pass through a chain of sorting-office nodes, each pointing only to its neighbor."
+        },
+        {
+          "id": "reroute-boundary",
+          "role": "complication",
+          "point": "Paths mostly stay put until something changes, like a failed link. Then packets can take a different route, which is why the network survives breakage.",
+          "claimIds": [
+            "packets-can-reroute-on-change"
+          ],
+          "seconds": 8,
+          "visual": "One link flashes red and the packets curve around it."
+        },
+        {
+          "id": "reassemble-resolution",
+          "role": "resolution",
+          "point": "At the far end, TCP's sequence numbers restore the order and any missing piece is re-requested, so a messy network delivers a perfect video.",
+          "claimIds": [
+            "tcp-sequence-numbers",
+            "tcp-ack-retransmit"
+          ],
+          "seconds": 8,
+          "visual": "Numbered packets snap into order, and a gap triggers a 'resend' pulse."
+        }
+      ],
+      "keyExample": {
+        "description": "A long letter mailed as dozens of numbered postcards through a chain of sorting offices, each knowing only the next office.",
+        "claimIds": [
+          "packet-switching-basic",
+          "packet-header-addresses",
+          "no-global-routing-map"
+        ]
+      },
+      "complication": {
+        "description": "Packets don't pick the fastest path in real time; routes change when a link fails or traffic is deliberately split, and TCP fixes any resulting disorder.",
+        "claimIds": [
+          "packets-can-reroute-on-change",
+          "tcp-handles-loss-duplication-reorder"
+        ]
+      },
+      "conclusion": "The internet doesn't send your video down one line. It sends many addressed, numbered pieces that are forwarded independently and reassembled, which is why it keeps working when parts break.",
+      "longFormOnly": [
+        "Circuit switching history and the packet-switching pioneers",
+        "IP fragmentation",
+        "Network of networks and who runs the internet",
+        "Fiber-optic cables, light speed and submarine cables",
+        "Traceroute demo",
+        "IP versus TCP layering in depth"
+      ],
+      "coreInsight": "Your video is chopped into separately addressed, numbered packets that are forwarded hop by hop and reassembled at the end, so no single path or line has to survive.",
+      "chorus": null,
+      "fit": {
+        "verdict": "fits",
+        "note": "Five beats total 45 s with one core insight. The short stands alone and leaves out the history, the cables and the layering detail."
+      },
+      "format": "short",
+      "inputHash": "25665935c3fc9117",
+      "researchHash": "92ef3a29598b410f",
+      "durationKey": "short:45/30-60@156wpm±0.15",
+      "at": "2026-10-11T03:41:43.722Z",
+      "promptVersion": 1
+    }
+  }
+}

@@ -171,3 +171,11 @@ img.sheet { width: 100%; border-radius: 8px; display: block; }
 audio { width: 100%; margin-top: 4px; }
 details summary { cursor: pointer; }
 @media (max-width: 760px) { .grid3 { grid-template-columns: 1fr; } .thumb { width: 96px; height: 54px; } }
+
+/* settings: minute/second pairs stay on one line, and wrap on phones */
+.dur input { width: 6.5em; flex: 0 0 auto; }
+@media (max-width: 640px) {
+  main { padding: 14px; }
+  .grid2 { grid-template-columns: 1fr; }
+  .top { gap: 10px; padding: 10px 14px; }
+}

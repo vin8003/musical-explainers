@@ -1,31 +1,45 @@
 // The production pipeline: explicit stages with cached outputs, staleness
-// tracking, bounded retries, a per-video lock and honest status.
+// tracking, bounded retries, a per-video lock and honest status. Research
+// comes first: research -> outline -> script -> editorial review ->
+// fact-check -> direction -> assets -> audio -> render -> qa -> package, with
+// a separate outline, script, review and audio per cut (landscape and Short).
 //
 //   npm run pipeline -- <slug|"Topic title">               continue: run every stage that is missing or stale
 //   npm run pipeline -- <slug> --stage audio                run one stage (even if fresh, with --force)
 //   npm run pipeline -- <slug> --from direct --to render    run a range
 //   npm run pipeline -- <slug> --stage direct --shots a,b --notes "..."   redirect selected shots
 //   npm run pipeline -- <slug> --stage render --shots a,b   quick half-res previews of selected shots
-//   npm run pipeline -- <slug> --fresh                      new script (old spec archived), then continue
+//   npm run pipeline -- <slug> --fresh                      new outline + script (old spec archived; research kept), then continue
 //   npm run pipeline -- <slug> --status                     print stage status as JSON
 //
 // Other flags: --preview (half-res render), --formats main,short, --force,
 // --allow-missing-assets, --visual-review (Claude inspects contact sheets),
-// --fix-rounds N (automatic QA fix rounds, default 1).
+// --fix-rounds N (automatic QA fix rounds, default 1), --duration-rounds N
+// (targeted script revisions when measured audio is outside the configured
+// range, default 1).
+//
+// Duration settings come from config/settings.json (admin: Settings), resolved
+// once at start; the admin passes its job snapshot in PIPELINE_SETTINGS.
 import { readFileSync } from "node:fs";
 import { lock, paths, PipelineError, readJson } from "./core/files";
-import { emit, setStage, Stage, STAGES } from "./core/state";
+import { fmt, FORMAT_LABEL, wordsToTarget } from "../src/schema/settings.mjs";
+import { runSettings } from "./core/settings";
+import { emit, setStage, Stage, STAGES, updateState } from "./core/state";
 import { computeStatus } from "./core/status";
 import { assetsStage } from "./stages/assets";
-import { audioStage } from "./stages/audio";
+import { audioStage, DurationError } from "./stages/audio";
+import { outlineStage, researchStage, reviewStage, scriptStage } from "./stages/editorial";
 import { renderStage } from "./stages/render";
-import { directStage, factcheckStage, scriptStage } from "./stages/text";
+import { directStage, factcheckStage } from "./stages/text";
 import type { RunCtx, StageResult, Topic } from "./stages/types";
 
 const slugify = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
 const RUNNERS: Record<Stage, (ctx: RunCtx) => Promise<StageResult>> = {
+  research: researchStage,
+  outline: outlineStage,
   script: scriptStage,
+  review: reviewStage,
   factcheck: factcheckStage,
   direct: directStage,
   assets: assetsStage,
@@ -42,7 +56,7 @@ function parseArgs(argv: string[]) {
     const a = argv[i];
     if (a.startsWith("--")) {
       const [k, v] = a.slice(2).split("=");
-      const valued = ["stage", "from", "to", "shots", "notes", "formats", "fix-rounds"].includes(k);
+      const valued = ["stage", "from", "to", "shots", "notes", "formats", "fix-rounds", "duration-rounds"].includes(k);
       flags[k] = v ?? (valued ? argv[++i] ?? "" : true);
     } else pos.push(a);
   }
@@ -73,7 +87,7 @@ async function runStage(stage: Stage, ctx: RunCtx) {
     const err = e as PipelineError;
     const cancelled = cancelling;
     setStage(ctx.slug, stage, { status: cancelled ? "cancelled" : "failed", endedAt: new Date().toISOString(), error: cancelled ? { message: "cancelled", kind: "cancelled" } : { message: err.message, kind: err.kind, hint: err.hint } });
-    emit({ event: "stage", stage, status: cancelled ? "cancelled" : "failed", error: err.message, kind: err.kind, hint: err.hint });
+    emit({ event: "stage", stage, status: cancelled ? "cancelled" : "failed", error: err.message, kind: err.kind, hint: err.hint, ...(err instanceof DurationError ? { durations: Object.fromEntries(err.failing.map((x) => [x.format, x.report])) } : {}) });
     throw e;
   }
 }
@@ -88,9 +102,12 @@ async function main() {
     process.exit(1);
   }
   const { slug, title, topic } = resolveTopic(target);
+  // One settings snapshot for the whole run: a settings change mid-run only affects later jobs.
+  const snap = runSettings();
+  for (const w of snap.warnings) console.log(`[pipeline] settings warning: ${w}`);
   if (flags.status) {
-    const s = computeStatus(slug);
-    console.log(JSON.stringify({ slug, stages: s.stages, problems: s.problems, lint: s.lint }, null, 2));
+    const s = computeStatus(slug, { settings: snap.settings, title, topic });
+    console.log(JSON.stringify({ slug, stages: s.stages, problems: s.problems, lint: s.lint, formats: s.formats }, null, 2));
     return;
   }
   const ctx: RunCtx = {
@@ -106,7 +123,9 @@ async function main() {
     allowMissingAssets: Boolean(flags["allow-missing-assets"]),
     visualReview: Boolean(flags["visual-review"]),
     fixRounds: Number(flags["fix-rounds"] ?? process.env.QA_FIX_ROUNDS ?? 1),
+    settings: snap.settings,
   };
+  const durationRounds = Number(flags["duration-rounds"] ?? process.env.DURATION_FIX_ROUNDS ?? 1);
   // Back-compat with the old generate.ts flags.
   const legacyNoRender = flags.legacy && !flags.render;
   const skip = new Set<Stage>(flags["skip-factcheck"] ? ["factcheck"] : []);
@@ -123,6 +142,12 @@ async function main() {
   process.on("SIGINT", onSignal);
 
   console.log(`Pipeline for "${title}" (${slug})`);
+  for (const f of ctx.formats) {
+    const d = ctx.settings.formats[f];
+    console.log(`  ${FORMAT_LABEL[f]}: target ${fmt(d.targetSeconds)}, allowed ${fmt(d.minSeconds)}-${fmt(d.maxSeconds)} (settings: ${snap.source})`);
+  }
+  emit({ event: "settings", settings: ctx.settings, source: snap.source });
+  updateState(slug, (s) => { s.run = { at: new Date().toISOString(), settings: ctx.settings, source: snap.source, formats: ctx.formats, pid: process.pid }; });
   const single = typeof flags.stage === "string" ? (flags.stage as Stage) : null;
   if (single && !STAGES.includes(single)) throw new PipelineError(`Unknown stage "${single}" (${STAGES.join(", ")})`, "invalid");
   const from = typeof flags.from === "string" ? STAGES.indexOf(flags.from as Stage) : 0;
@@ -134,26 +159,56 @@ async function main() {
     if (single) {
       currentStage = single;
       await runStage(single, { ...ctx, force: ctx.force || true });
+      if (single === "qa") {
+        const after = computeStatus(slug, { settings: ctx.settings, formats: ctx.formats, title, topic }).stages.qa;
+        if (after.status === "failed") throw new PipelineError(`QA failed: ${after.reason}`, "quality", "Open the Quality tab to see what failed.");
+      }
       return;
     }
     // Continue mode: run what's missing or stale, in order; rescan after each
     // run because later stages can make earlier checks stale (new diagram
     // labels need fact-checking). Each stage runs at most twice.
     const runs: Partial<Record<Stage, number>> = {};
+    // Review and fact-check can legitimately run again after each other's revisions.
+    const maxRuns = (st: Stage) => (st === "review" || st === "factcheck" ? 3 : 2);
     let fixRoundsLeft = ctx.fixRounds;
-    for (let guard = 0; guard < 30; guard++) {
-      const status = computeStatus(slug).stages;
-      const next = STAGES.slice(from, to + 1).find((s, i) => !skip.has(s) && (status[s].status !== "fresh" || (i === 0 && s === "script" && ctx.fresh && !runs.script)));
+    let durationRoundsLeft = durationRounds;
+    for (let guard = 0; guard < 40; guard++) {
+      const status = computeStatus(slug, { settings: ctx.settings, formats: ctx.formats, title, topic }).stages;
+      let next = STAGES.slice(from, to + 1).find((s) => !skip.has(s) && status[s].status !== "fresh");
+      // --fresh: re-plan from the outline once research is in place.
+      const oi = STAGES.indexOf("outline");
+      if (ctx.fresh && !runs.outline && from <= oi && to >= oi && (!next || STAGES.indexOf(next) > oi)) next = "outline";
       if (!next) break;
-      if ((runs[next] ?? 0) >= 2) {
+      if ((runs[next] ?? 0) >= maxRuns(next)) {
         if (next === "qa" && status.qa.status === "failed") throw new PipelineError(`QA still failing: ${status.qa.reason}`, "quality", "Open the Quality tab, fix the flagged shots, and re-render.");
+        if (next === "review" && status.review.status === "failed") throw new PipelineError(`Editorial review still failing: ${status.review.reason}`, "editorial");
+        if (next === "factcheck" && status.factcheck.status === "failed") throw new PipelineError(`Fact-check still failing: ${status.factcheck.reason}`, "factcheck");
+        if (next === "audio" && status.audio.status === "failed") throw new PipelineError(`Audio duration still outside the range: ${status.audio.reason}`, "duration");
         throw new PipelineError(`${next} is still ${status[next].status} after two runs: ${status[next].reason}`, "failed");
       }
       currentStage = next;
       runs[next] = (runs[next] ?? 0) + 1;
-      await runStage(next, { ...ctx, fresh: next === "script" ? ctx.fresh : false });
+      try {
+        await runStage(next, { ...ctx, fresh: (next === "outline" || next === "script") && runs[next] === 1 ? ctx.fresh : false });
+      } catch (e) {
+        // Measured audio outside the configured range: one targeted script
+        // revision for the failing cut(s) with the measured numbers, then the
+        // affected downstream stages re-run (unaffected cuts stay cached).
+        if (!(e instanceof DurationError) || durationRoundsLeft <= 0) throw e;
+        durationRoundsLeft--;
+        const revise: RunCtx["revise"] = {};
+        for (const { format, report } of e.failing) {
+          const words = wordsToTarget(report, ctx.settings.narration.wordsPerMinute);
+          revise[format] = `The produced audio measured ${fmt(report.seconds)} (narration ${fmt(report.narrationSeconds)}, ${report.spokenWords} spoken words at a measured ${report.measuredWpm ?? "?"} wpm); the ${FORMAT_LABEL[format]} must land near the ${fmt(report.targetSeconds)} target (within ${Math.round(ctx.settings.narration.targetTolerance * 100)}%, never outside ${fmt(report.minSeconds)}-${fmt(report.maxSeconds)}). ${words > 0 ? `Add roughly ${words} spoken words of real explanation from the outline and dossier (deepen the mechanism and the worked example); do not repeat or pad.` : `Cut roughly ${-words} spoken words (or chorus repeats) while keeping the mechanism and the example.`} Keep everything else that works.`;
+        }
+        console.log(`\n[pipeline] ${e.message}\n[pipeline] targeted script revision for ${Object.keys(revise).join(", ")} (duration round ${durationRounds - durationRoundsLeft}/${durationRounds})`);
+        currentStage = "script";
+        await runStage("script", { ...ctx, formats: Object.keys(revise) as RunCtx["formats"], revise, force: true });
+        continue;
+      }
       if (next === "qa") {
-        const after = computeStatus(slug).stages.qa;
+        const after = computeStatus(slug, { settings: ctx.settings, formats: ctx.formats, title, topic }).stages.qa;
         if (after.status === "failed") {
           const fixes = (await import("./stages/qa")).fixPlan(slug);
           if (fixRoundsLeft > 0 && fixes.shots.length) {

@@ -5,7 +5,9 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { buildTimeline, shotsFor } from "../../src/schema/timeline.mjs";
+import { checkDuration, fmt, FORMAT_LABEL, formatKey, isBlocking } from "../../src/schema/settings.mjs";
+import type { Settings } from "../../src/schema/settings.mjs";
+import { buildTimeline, shotsFor, wordCount } from "../../src/schema/timeline.mjs";
 import type { Format, Timeline } from "../../src/schema/timeline.mjs";
 import type { VideoSpec } from "../../src/schema/storyboard.mjs";
 import type { AudioTrack } from "../../src/types";
@@ -21,22 +23,63 @@ export type AudioManifest = {
   at: string;
   providers: { voice: string; music: string; vocals: string };
   licenses: string[];
+  /** Measured narration length per shot, per cut (each cut has its own script). */
+  voice?: Partial<Record<Format, Record<string, number>>>;
+  /** Legacy (single storyboard): measured narration per shot id. */
   voiceSeconds: Record<string, number>;
+  /** Measured lengths per cut against the job's duration settings. */
+  durations?: Partial<Record<Format, DurationReport>>;
   formats: Partial<Record<Format, AudioTrack & { seconds: number; loudness: { I: number; TP: number; LRA: number } | null; timeline: string }>>;
   warnings: string[];
 };
 
+export type DurationReport = {
+  /** Sum of the measured narration clips in this cut. */
+  narrationSeconds: number;
+  /** Final soundtrack length = video length (narration, sung chorus, musical bars, transitions, tails). */
+  seconds: number;
+  spokenWords: number;
+  /** Effective spoken rate of the narration clips. */
+  measuredWpm: number | null;
+  /** Share of the video that is narration; the rest is music, chorus and pauses. */
+  narrationShare: number;
+  targetSeconds: number;
+  minSeconds: number;
+  maxSeconds: number;
+  verdict: string;
+  message: string;
+  /** Estimate made from the script before audio, for comparison. */
+  estimatedSeconds?: number;
+};
+
+/** Measured media outside the configured range or target tolerance, per cut. */
+export class DurationError extends PipelineError {
+  constructor(message: string, public failing: { format: Format; report: DurationReport }[]) {
+    super(message, "duration", "Revise the script for that format (the pipeline does one targeted revision automatically), or change the duration range in Settings > Video formats.");
+  }
+}
+
+export type CutSpecs = Partial<Record<Format, VideoSpec>>;
+/** The storyboard behind each cut (a legacy single storyboard serves both). */
+export const cutSpecs = (slug: string, formats: Format[] = ["main", "short"]): CutSpecs => Object.fromEntries(formats.map((f) => [f, loadSpec(slug, f)]).filter(([, s]) => s)) as CutSpecs;
+
 const musicMode = (spec: VideoSpec) => process.env.AUDIO_MUSIC ?? (spec.music.songSrc ? "file" : "synth");
 const vocalsMode = (voice: VoiceProvider | null) => (voice?.name === "say" ? process.env.AUDIO_VOCALS ?? "chant" : "none");
 
-export function audioInputHash(spec: VideoSpec) {
+const specPart = (spec: VideoSpec, format: Format) => ({
+  music: spec.music,
+  shots: shotsFor(spec, format).map((s) => ({ id: s.id, n: s.narration, l: s.lyric, sec: s.section, b: s.minBars, a: s.accents, t: s.transition, sh: s.short, vt: s.visual?.type })),
+});
+
+/** Inputs of the audio: each cut's script text and timing, voice and music settings, and the cut's duration settings (they decide pass/fail). */
+export function audioInputHash(specs: CutSpecs, settings: Settings) {
   const voice = (() => { try { return getVoiceProvider()?.id ?? "none"; } catch { return "unavailable"; } })();
+  const any = specs.main ?? specs.short;
   return hashOf({
-    v: 3,
-    music: spec.music,
-    shots: spec.shots.map((s) => ({ id: s.id, n: s.narration, l: s.lyric, sec: s.section, b: s.minBars, a: s.accents, t: s.transition, sh: s.short, vt: s.visual?.type })),
+    v: 4,
+    cuts: Object.fromEntries((Object.keys(specs) as Format[]).sort().map((f) => [f, { ...specPart(specs[f]!, f), duration: formatKey(settings, f) }])),
     voice,
-    musicMode: musicMode(spec),
+    musicMode: any ? musicMode(any) : null,
     vocals: process.env.AUDIO_VOCALS ?? "chant",
   });
 }
@@ -45,10 +88,14 @@ export function loadAudioManifest(slug: string): AudioManifest | null {
   return readJson<AudioManifest | null>(join(paths.audio(slug), "manifest.json"), null);
 }
 
-/** Timelines the renderer should use: measured when audio exists, estimated otherwise. */
-export function timelinesFor(spec: VideoSpec, manifest: AudioManifest | null): Record<Format, Timeline> {
-  const voice = manifest?.voiceSeconds ?? {};
-  return { main: buildTimeline(spec, "main", voice), short: buildTimeline(spec, "short", voice) };
+/** Timelines the renderer should use: measured when audio exists, estimated (at the configured delivery rate) otherwise. */
+export function timelinesFor(specs: CutSpecs, manifest: AudioManifest | null, settings?: Settings): Partial<Record<Format, Timeline>> {
+  const out: Partial<Record<Format, Timeline>> = {};
+  for (const f of Object.keys(specs) as Format[]) {
+    const voice = manifest?.voice?.[f] ?? manifest?.voiceSeconds ?? {};
+    out[f] = buildTimeline(specs[f]!, f, voice, undefined, { wordsPerMinute: settings?.narration.wordsPerMinute });
+  }
+  return out;
 }
 
 /** Simple autocorrelation pitch estimate (Hz) over the loudest part of a mono signal. */
@@ -72,13 +119,15 @@ function estimatePitch(x: Float32Array): number {
 }
 
 export async function audioStage(ctx: RunCtx): Promise<StageResult> {
-  const spec = loadSpec(ctx.slug);
-  if (!spec) throw new PipelineError("No storyboard yet", "missing");
-  const inputHash = audioInputHash(spec);
+  const specs = cutSpecs(ctx.slug);
+  const wanted = ctx.formats.filter((f) => specs[f]);
+  if (!wanted.length) throw new PipelineError("No storyboard yet", "missing");
+  const inputHash = audioInputHash(specs, ctx.settings);
   const existing = loadAudioManifest(ctx.slug);
-  const wanted = ctx.formats;
-  if (existing?.inputHash === inputHash && !ctx.force && wanted.every((f) => existing.formats[f]?.src && existsSync(join(ROOT, "public", existing.formats[f]!.src!))))
+  if (existing?.inputHash === inputHash && !ctx.force && wanted.every((f) => existing.formats[f]?.src && existsSync(join(ROOT, "public", existing.formats[f]!.src!)))) {
+    durationGate(existing, wanted);
     return { summary: `cached: ${describe(existing)}`, cached: true, inputHash };
+  }
 
   const warnings: string[] = [];
   const licenses: string[] = [];
@@ -92,25 +141,32 @@ export async function audioStage(ctx: RunCtx): Promise<StageResult> {
   } catch (e) {
     warnings.push(`narration disabled: ${(e as Error).message}`);
   }
-  const voiceSeconds: Record<string, number> = {};
-  const clips: Record<string, string> = {};
-  const needed = new Set(wanted.flatMap((f) => shotsFor(spec, f).map((s) => s.id)));
-  if (voice) {
-    licenses.push(voice.license);
-    for (const s of spec.shots) {
-      if (!s.narration || !needed.has(s.id)) continue;
+  // Clips are cached by text + voice, so a sentence shared by both cuts is spoken once.
+  const voiceByCut: Partial<Record<Format, Record<string, number>>> = {};
+  const clipsByCut: Partial<Record<Format, Record<string, string>>> = {};
+  if (voice) licenses.push(voice.license);
+  for (const f of wanted) {
+    const spec = specs[f]!;
+    const secs: Record<string, number> = (voiceByCut[f] = {});
+    const clips: Record<string, string> = (clipsByCut[f] = {});
+    if (!voice) {
+      if (spec.shots.some((s) => s.narration)) warnings.push(`${f}: no narration voice available: the video will have music only`);
+      continue;
+    }
+    for (const s of shotsFor(spec, f)) {
+      if (!s.narration) continue;
       const file = join(dir, "voice", `${s.id}-${hashOf([voice.id, s.narration])}.aiff`);
       if (!existsSync(file)) {
-        console.log(`  narrating ${s.id}`);
+        console.log(`  narrating ${f} ${s.id}`);
         await voice.speak(s.narration, file);
       }
       clips[s.id] = file;
-      voiceSeconds[s.id] = Math.round(durationOf(file) * 1000) / 1000;
+      secs[s.id] = Math.round(durationOf(file) * 1000) / 1000;
     }
-  } else if (spec.shots.some((s) => s.narration)) warnings.push("no narration voice available: the video will have music only");
+  }
 
   // 2. Timelines from measured narration.
-  const timelines = timelinesFor(spec, { voiceSeconds } as AudioManifest);
+  const timelines = timelinesFor(Object.fromEntries(wanted.map((f) => [f, specs[f]])) as CutSpecs, { voice: voiceByCut, voiceSeconds: {} } as AudioManifest, ctx.settings);
 
   // 3. Chant vocals: each lyric word sung (pitch-shifted speech) on its beat.
   const vocals = vocalsMode(voice);
@@ -125,13 +181,16 @@ export async function audioStage(ctx: RunCtx): Promise<StageResult> {
     return v;
   };
 
-  const musicKind = musicMode(spec);
+  const musicKind = musicMode(specs[wanted[0]]!);
   const formats: AudioManifest["formats"] = {};
   // Drop previous mixes (other generated files, e.g. 3D clips, stay).
   mkdirSync(paths.publicGen(ctx.slug), { recursive: true });
   for (const f of readdirSync(paths.publicGen(ctx.slug))) if (/^mix-.*\.wav$/.test(f)) rmSync(join(paths.publicGen(ctx.slug), f));
+  const durations: Partial<Record<Format, DurationReport>> = {};
   for (const format of wanted) {
-    const tl = timelines[format];
+    const spec = specs[format]!;
+    const clips = clipsByCut[format] ?? {};
+    const tl = timelines[format]!;
     const beatS = 60 / tl.bpm;
     const total = tl.totalFrames / tl.fps;
     const narration = stereo(total + 1);
@@ -211,6 +270,22 @@ export async function audioStage(ctx: RunCtx): Promise<StageResult> {
       timeline: `timeline-${format}.json`,
     };
     writeJson(join(dir, `timeline-${format}.json`), tl);
+    // Measure what was actually produced (ffprobe on the final mix), not the plan.
+    const measured = Math.round(durationOf(out) * 100) / 100;
+    const narrationSeconds = Object.values(voiceByCut[format] ?? {}).reduce((n, x) => n + x, 0);
+    const spokenWords = shotsFor(spec, format).reduce((n, s) => n + (clips[s.id] ? wordCount(s.narration) : 0), 0);
+    const check = checkDuration(measured, ctx.settings, format);
+    const d = ctx.settings.formats[format];
+    durations[format] = {
+      narrationSeconds: Math.round(narrationSeconds * 10) / 10,
+      seconds: measured,
+      spokenWords,
+      measuredWpm: narrationSeconds > 0 ? Math.round((spokenWords / narrationSeconds) * 600) / 10 : null,
+      narrationShare: measured > 0 ? Math.round((narrationSeconds / measured) * 100) / 100 : 0,
+      targetSeconds: d.targetSeconds, minSeconds: d.minSeconds, maxSeconds: d.maxSeconds,
+      verdict: check.verdict, message: check.message,
+      estimatedSeconds: spec.editorial?.estimate?.seconds,
+    };
   }
 
   const manifest: AudioManifest = {
@@ -218,12 +293,27 @@ export async function audioStage(ctx: RunCtx): Promise<StageResult> {
     at: new Date().toISOString(),
     providers: { voice: voice?.id ?? "none", music: musicKind, vocals },
     licenses: [...new Set(licenses)],
-    voiceSeconds,
+    voice: voiceByCut,
+    voiceSeconds: {},
+    durations,
     formats,
     warnings,
   };
   writeJson(join(dir, "manifest.json"), manifest);
+  durationGate(manifest, wanted);
   return { summary: describe(manifest), cached: false, warnings, inputHash };
+}
+
+/**
+ * Measured length outside the configured range or the target tolerance is a failure, reported per
+ * cut. Nothing is sped up, trimmed or padded to pass: the fix is a script or
+ * arrangement revision (or a deliberate settings change).
+ * ALLOW_DURATION_MISMATCH=1 lets an old, short video render as a preview.
+ */
+export function durationGate(m: AudioManifest, formats: Format[]) {
+  const failing = formats.flatMap((f) => (m.durations?.[f] && isBlocking(m.durations[f]!.verdict) ? [{ format: f, report: m.durations[f]! }] : []));
+  if (!failing.length || process.env.ALLOW_DURATION_MISMATCH === "1") return;
+  throw new DurationError(failing.map((x) => `${FORMAT_LABEL[x.format]} measured ${fmt(x.report.seconds)} (narration ${fmt(x.report.narrationSeconds)}): ${x.report.message}`).join("; "), failing);
 }
 
 function envelope(b: Stereo) {
@@ -240,6 +330,9 @@ function envelope(b: Stereo) {
 
 export function describe(m: AudioManifest) {
   return Object.entries(m.formats)
-    .map(([f, t]) => `${f}: ${t!.status} (${[t!.has.music && "music", t!.has.narration && "narration", t!.has.vocals && "sung chorus", t!.has.sfx && "sfx"].filter(Boolean).join(" + ")}, ${Math.round(t!.seconds)}s${t!.loudness ? `, ${t!.loudness.I} LUFS` : ""})`)
+    .map(([f, t]) => {
+      const d = m.durations?.[f as Format];
+      return `${f}: ${t!.status} (${[t!.has.music && "music", t!.has.narration && "narration", t!.has.vocals && "sung chorus", t!.has.sfx && "sfx"].filter(Boolean).join(" + ")}, ${d ? `${fmt(d.seconds)} [${d.verdict}; narration ${fmt(d.narrationSeconds)}]` : `${Math.round(t!.seconds)}s`}${t!.loudness ? `, ${t!.loudness.I} LUFS` : ""})`;
+    })
     .join("; ");
 }

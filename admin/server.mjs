@@ -11,15 +11,20 @@
 import { spawn, spawnSync } from "node:child_process";
 import { appendFileSync, createReadStream, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
-import { dirname, extname, join } from "node:path";
+import { dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { lintSpec, migrateSpec, SCENES_3D, SECTIONS, validateSpec, VISUALS, ICONS } from "../src/schema/storyboard.mjs";
+import { DEFAULT_SETTINGS, FORMAT_LABEL, normalizeSettings, resolveSettings, validateSettings } from "../src/schema/settings.mjs";
+import { PASS_RULES, RUBRIC } from "../src/schema/editorial.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+// Data (backlog, specs, settings, outputs) can live elsewhere: tests point DATA_ROOT at a temp dir.
+const DATA = process.env.DATA_ROOT ? resolve(process.env.DATA_ROOT) : ROOT;
 const PUBLIC = join(ROOT, "admin/public");
-const BACKLOG = join(ROOT, "topics/backlog.json");
-const SPECS = join(ROOT, "specs");
-const OUT = join(ROOT, "out");
+const BACKLOG = join(DATA, "topics/backlog.json");
+const SETTINGS = join(DATA, "config/settings.json");
+const SPECS = join(DATA, "specs");
+const OUT = join(DATA, "out");
 const LOGS = join(OUT, "logs");
 const PORT = Number(process.env.ADMIN_PORT ?? 4321);
 const HOST = process.env.ADMIN_HOST ?? "127.0.0.1";
@@ -27,7 +32,8 @@ const HOST = process.env.ADMIN_HOST ?? "127.0.0.1";
 const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const CAND_RE = /^[0-9]{4}-[0-9]{2}-[0-9]{2}_[0-9]{2}-[0-9]{2}-[0-9]{2}(?:-preview)?$/;
 const STATUSES = ["queued", "scripting", "review", "approved", "scheduled", "published", "rejected"];
-const STAGES = ["script", "factcheck", "direct", "assets", "audio", "render", "qa", "package"];
+const STAGES = ["research", "outline", "script", "review", "factcheck", "direct", "assets", "audio", "render", "qa", "package"];
+const FORMATS = ["main", "short"];
 const slugify = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
 // ---------- files ----------
@@ -83,6 +89,31 @@ function updateState(slug, fn) {
   return s;
 }
 
+// ---------- settings (config/settings.json) ----------
+
+/** Effective settings plus what is on disk, so the panel can show both honestly. */
+function loadSettings() {
+  let raw = null;
+  let unreadable = null;
+  if (existsSync(SETTINGS)) {
+    try {
+      raw = JSON.parse(readFileSync(SETTINGS, "utf8"));
+    } catch (e) {
+      unreadable = `config/settings.json can't be parsed (${e.message}); using the defaults`;
+    }
+  }
+  const r = resolveSettings(unreadable ? null : raw);
+  return { ...r, warnings: unreadable ? [unreadable, ...r.warnings] : r.warnings, saved: raw, defaults: DEFAULT_SETTINGS, path: "config/settings.json", labels: FORMAT_LABEL, at: mtime(SETTINGS) };
+}
+
+function saveSettings(body) {
+  const s = normalizeSettings(body);
+  const problems = validateSettings(s);
+  if (problems.length) throw httpError(400, problems.join("; "));
+  writeJson(SETTINGS, s);
+  return loadSettings();
+}
+
 function validateTopic(t, { partial = false } = {}) {
   const out = {};
   if (!partial || "title" in t) {
@@ -134,7 +165,7 @@ const statusCache = new Map(); // slug -> { key, value }
 let statusRunning = null;
 
 function statusKey(slug) {
-  const files = [join(SPECS, `${slug}.json`), join(SPECS, `${slug}.sources.json`), statePath(slug), join(OUT, slug, "audio/manifest.json"), join(OUT, slug, "assets.json"), join(ROOT, "assets/manifest.json")];
+  const files = [join(SPECS, `${slug}.json`), join(SPECS, `${slug}.short.json`), join(SPECS, `${slug}.sources.json`), join(SPECS, `${slug}.research.json`), join(SPECS, `${slug}.outline.json`), join(SPECS, `${slug}.review.json`), statePath(slug), join(OUT, slug, "audio/manifest.json"), join(OUT, slug, "assets.json"), join(ROOT, "assets/manifest.json"), SETTINGS, BACKLOG];
   return files.map(mtime).join("|");
 }
 
@@ -145,7 +176,7 @@ function refreshStatus(slugs, withEnv = false) {
   if (statusRunning) return statusRunning.then(() => refreshStatus(slugs, withEnv));
   const keys = Object.fromEntries(stale.map((s) => [s, statusKey(s)]));
   statusRunning = new Promise((resolve) => {
-    const child = spawn(process.execPath, [TSX, "scripts/status.ts", ...stale, ...(withEnv ? ["--env"] : [])], { cwd: ROOT, env: { ...process.env, PATH: `${dirname(process.execPath)}:${process.env.PATH ?? ""}` } });
+    const child = spawn(process.execPath, [TSX, "scripts/status.ts", ...stale, ...(withEnv ? ["--env"] : [])], { cwd: ROOT, env: { ...process.env, DATA_ROOT: DATA, PATH: `${dirname(process.execPath)}:${process.env.PATH ?? ""}` } });
     let out = "";
     child.stdout.on("data", (b) => (out += b));
     child.on("close", () => {
@@ -210,6 +241,9 @@ function videoInfo(slug, topic) {
       ? { main: latest.files.main, short: latest.files.short, at: Date.parse(latest.createdAt), candidate: latest.id, preview: latest.preview, stale: computed?.stages?.render?.status === "stale", qa: latest.qa ?? null }
       : legacy ? { main: existsSync(join(OUT, `${slug}.mp4`)), short: existsSync(join(OUT, `${slug}-short.mp4`)), at: mtime(join(OUT, `${slug}.mp4`)), candidate: null, legacy: true, stale: true } : null,
     stages: computed?.stages ?? null,
+    formats: computed?.formats ?? null,
+    hasShort: existsSync(join(SPECS, `${slug}.short.json`)),
+    lastRunSettings: state.run?.settings ?? null,
     stageRuns: state.stages ?? {},
     checkpoint: state.checkpoint ?? null,
     approved: state.approved ?? null,
@@ -240,8 +274,8 @@ function allVideos() {
 const MODES = {
   continue: { label: "Continue: run every missing or stale stage", args: () => [] },
   full: { label: "Full pipeline (continue to the end)", args: () => [] },
-  spec: { label: "Script + fact-check only", args: () => ["--to", "factcheck"] },
-  direct: { label: "Script, fact-check and storyboard", args: () => ["--to", "direct"] },
+  spec: { label: "Research, scripts, editorial review + fact-check only", args: () => ["--to", "factcheck"] },
+  direct: { label: "Research through storyboard (no audio/render)", args: () => ["--to", "direct"] },
   render: { label: "Render a new candidate", args: () => ["--stage", "render"] },
   stage: { label: "Run one stage", args: (o) => ["--stage", o.stage] },
 };
@@ -255,9 +289,13 @@ function broadcast(event, data) {
   for (const res of clients) res.write(msg);
 }
 
+// What kind of failure, in the words the panel shows.
+const FAILURE = { editorial: "content quality", factcheck: "factual verification", config: "configuration", duration: "media duration", quality: "rendered-media QA" };
+const failureCategory = (kind) => (kind ? FAILURE[kind] ?? kind : null);
+
 const jobSummary = (j) => ({
   id: j.id, slug: j.slug, title: j.title, mode: j.mode, modeLabel: j.label, fresh: j.fresh, options: j.options,
-  state: j.state, stage: j.stage, stages: j.stages, progress: j.progress, flagged: j.flagged, error: j.error, hint: j.hint,
+  state: j.state, stage: j.stage, stages: j.stages, progress: j.progress, flagged: j.flagged, error: j.error, hint: j.hint, errorKind: j.errorKind ?? null, failure: failureCategory(j.errorKind), settings: j.settings ?? null, durations: j.durations ?? null,
   createdAt: j.createdAt, startedAt: j.startedAt, endedAt: j.endedAt, exitCode: j.exitCode, logFile: j.logFile,
 });
 
@@ -287,7 +325,7 @@ function enqueue({ slug, mode = "continue", fresh = false, stage, shots, notes, 
   };
   const job = {
     id: nextId++, slug, title: generateTitle(slug), mode, label: jobLabel(mode, options), fresh: Boolean(fresh), options, state: "queued",
-    stage: "queued", stages: {}, progress: null, flagged: [], log: "", error: null, hint: null,
+    stage: "queued", stages: {}, progress: null, flagged: [], log: "", error: null, hint: null, errorKind: null, settings: null, durations: null,
     createdAt: Date.now(), startedAt: null, endedAt: null, exitCode: null, logFile: null, proc: null,
   };
   jobs.push(job);
@@ -322,7 +360,7 @@ function parseLine(job, line) {
     if (ev.event === "stage") {
       job.stages[ev.stage] = { status: ev.status, summary: ev.summary, error: ev.error, cached: ev.cached };
       if (ev.status === "running") { job.stage = ev.stage; job.progress = null; }
-      if (ev.status === "failed") { job.error = ev.error; job.hint = ev.hint ?? null; }
+      if (ev.status === "failed") { job.error = ev.error; job.hint = ev.hint ?? null; job.errorKind = ev.kind ?? null; if (ev.durations) job.durations = ev.durations; }
       emitJob(job);
       if (ev.status !== "running") broadcast("videos", { slug: job.slug });
     } else if (ev.event === "progress") {
@@ -346,6 +384,18 @@ function start(job) {
   mkdirSync(LOGS, { recursive: true });
   job.logFile = join(LOGS, `${job.slug}-${stamp()}-${job.mode}.log`);
   writeFileSync(job.logFile, "");
+  // Snapshot the settings when the job starts; the pipeline uses exactly these
+  // for the whole run, so saving new settings meanwhile only affects later jobs.
+  const eff = loadSettings();
+  if (validateSettings(eff.settings).length) {
+    job.state = "failed";
+    job.errorKind = "config";
+    job.error = "The duration settings are invalid";
+    job.endedAt = Date.now();
+    emitJob(job);
+    return pump();
+  }
+  job.settings = { settings: eff.settings, source: eff.source, at: new Date().toISOString() };
   job.state = "running";
   job.stage = "starting";
   job.startedAt = Date.now();
@@ -364,7 +414,7 @@ function start(job) {
     cwd: ROOT,
     detached: process.platform !== "win32", // own process group, so Cancel stops claude/remotion/blender too
     // Put this server's own node first on PATH so the child uses the same arch.
-    env: { ...process.env, PATH: `${dirname(process.execPath)}:${process.env.PATH ?? ""}`, FORCE_COLOR: "0", NO_COLOR: "1", CI: "1" },
+    env: { ...process.env, PATH: `${dirname(process.execPath)}:${process.env.PATH ?? ""}`, FORCE_COLOR: "0", NO_COLOR: "1", CI: "1", PIPELINE_SETTINGS: JSON.stringify(job.settings) },
   });
   job.proc = proc;
   emitJob(job);
@@ -403,6 +453,8 @@ function start(job) {
         const lastErr = job.log.trim().split("\n").reverse().find((l) => /\[pipeline\]|error|failed/i.test(l));
         job.error = (lastErr ?? `exited with ${signal ?? code}`).replace(/^\[pipeline\]\s*/, "").slice(0, 400);
       }
+      const kind = job.log.match(/\[pipeline\] (\w+): /);
+      if (!job.errorKind && kind && FAILURE[kind[1]]) job.errorKind = kind[1];
       const hint = job.log.match(/\[pipeline\] hint: (.*)/);
       if (hint) job.hint = hint[1];
       appendLog(job, `\n[admin] failed (exit ${signal ?? code})\n`);
@@ -541,6 +593,11 @@ function detail(slug) {
     lint: spec ? lintSpec(spec) : [],
     problems: cachedStatus(slug)?.problems ?? [],
     sourcesJson: readJson(join(SPECS, `${slug}.sources.json`), null),
+    shortSpecJson: (() => { const r = readJson(join(SPECS, `${slug}.short.json`), null); return r ? migrateSpec(r) : null; })(),
+    research: readJson(join(SPECS, `${slug}.research.json`), null),
+    outline: readJson(join(SPECS, `${slug}.outline.json`), null),
+    editorialReview: readJson(join(SPECS, `${slug}.review.json`), null),
+    timelineShort: readJson(join(OUT, slug, "audio/timeline-short.json"), null),
     assets: readJson(join(OUT, slug, "assets.json"), null),
     audioManifest: readJson(join(OUT, slug, "audio/manifest.json"), null),
     timeline: readJson(join(OUT, slug, "audio/timeline-main.json"), null),
@@ -568,9 +625,24 @@ async function route(req, res) {
 
   if (req.method === "GET" && p === "/api/meta")
     return send(res, 200, {
-      env: ENV, statuses: STATUSES, stages: STAGES, sections: SECTIONS, visuals: VISUALS, icons: ICONS, scenes3d: SCENES_3D, sceneKinds: SECTIONS,
+      env: ENV, statuses: STATUSES, stages: STAGES, formats: FORMATS, formatLabels: FORMAT_LABEL, rubric: RUBRIC, passRules: PASS_RULES, sections: SECTIONS, visuals: VISUALS, icons: ICONS, scenes3d: SCENES_3D, sceneKinds: SECTIONS,
       modes: Object.fromEntries(Object.entries(MODES).filter(([k]) => k !== "stage" && k !== "full").map(([k, v]) => [k, v.label])),
     });
+
+  // Settings: video formats and durations
+  if (req.method === "GET" && p === "/api/settings") return send(res, 200, loadSettings());
+  if (req.method === "PUT" && p === "/api/settings") {
+    const saved = saveSettings(await readBody(req));
+    statusCache.clear();
+    broadcast("settings", {});
+    broadcast("status", {});
+    return send(res, 200, saved);
+  }
+  // The shared validator, so the form checks exactly what the server checks.
+  if (req.method === "GET" && p === "/schema/settings.mjs") {
+    res.writeHead(200, { "content-type": "text/javascript; charset=utf-8", "cache-control": "no-cache" });
+    return res.end(readFileSync(join(ROOT, "src/schema/settings.mjs")));
+  }
 
   // Topics (backlog)
   if (req.method === "GET" && p === "/api/topics") return send(res, 200, loadBacklog());
@@ -633,13 +705,15 @@ async function route(req, res) {
     const slug = slugParam(r[1]);
     if (jobs.some((j) => j.slug === slug && j.state === "running")) throw httpError(409, "A job is running for this video; wait for it or cancel it first");
     const spec = await readBody(req);
+    const format = url.searchParams.get("format") === "short" ? "short" : "main";
     const problems = validateSpec(spec, { slug });
     if (problems.length) throw httpError(400, problems.join("; "));
-    const path = join(SPECS, `${slug}.json`);
+    if (format === "short" && spec.format !== "short") throw httpError(400, "The Short storyboard must have format \"short\"");
+    const path = join(SPECS, format === "short" ? `${slug}.short.json` : `${slug}.json`);
     if (existsSync(path)) {
       // Keep the previous version: edits are recoverable from out/<slug>/archive/.
       mkdirSync(join(OUT, slug, "archive"), { recursive: true });
-      writeFileSync(join(OUT, slug, "archive", `${stamp()}-admin-edit-${slug}.json`), readFileSync(path));
+      writeFileSync(join(OUT, slug, "archive", `${stamp()}-admin-edit-${slug}${format === "short" ? ".short" : ""}.json`), readFileSync(path));
     }
     writeJson(path, spec);
     statusCache.delete(slug);

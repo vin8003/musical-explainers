@@ -9,10 +9,14 @@ export const NARRATION_LEAD_S = 0.35;
 export const NARRATION_TAIL_S = 0.45;
 export const TRANSITION_FRAMES = { cut: 0, fade: 12, wipe: 14, push: 14, zoom: 12 };
 
-/** Shots in a cut: the Short uses shots marked `short`, falling back to intro + chorus + outro. */
+/**
+ * Shots in a cut. A storyboard written for one format (spec.format) uses all
+ * its shots. Older single storyboards cut the Short from shots marked `short`,
+ * falling back to intro + chorus + outro.
+ */
 export function shotsFor(spec, format) {
   const shots = spec.shots ?? [];
-  if (format !== "short") return shots;
+  if (format !== "short" || spec.format === "short") return shots;
   const marked = shots.filter((s) => s.short);
   if (marked.length) return marked;
   const auto = shots.filter((s) => s.section === "intro" || s.section === "chorus" || s.section === "outro");
@@ -28,8 +32,9 @@ export function lyricWords(lyric) {
  * @param spec      v2 storyboard
  * @param format    "main" | "short"
  * @param voice     { [shotId]: seconds } measured narration lengths (optional)
+ * @param opts      { wordsPerMinute } delivery rate for shots without a measured length
  */
-export function buildTimeline(spec, format = "main", voice = {}, fps = FPS) {
+export function buildTimeline(spec, format = "main", voice = {}, fps = FPS, opts = {}) {
   const bpm = spec.music?.bpm ?? 120;
   const beatS = 60 / bpm;
   const barS = beatS * BEATS_PER_BAR;
@@ -38,7 +43,7 @@ export function buildTimeline(spec, format = "main", voice = {}, fps = FPS) {
   let beat = 0;
   const out = [];
   shots.forEach((s, index) => {
-    const narr = typeof voice[s.id] === "number" ? voice[s.id] : s.narration ? estimateSpeechSeconds(s.narration) : 0;
+    const narr = typeof voice[s.id] === "number" ? voice[s.id] : s.narration ? estimateSpeechSeconds(s.narration, opts.wordsPerMinute) : 0;
     const needS = narr ? NARRATION_LEAD_S + narr + NARRATION_TAIL_S : 0;
     const words = lyricWords(s.lyric);
     // Chant: one word per beat, two per beat when the line is long.
@@ -67,10 +72,32 @@ export function buildTimeline(spec, format = "main", voice = {}, fps = FPS) {
   return { format, fps, bpm, beatOffsetMs: spec.music?.beatOffsetMs ?? 0, framesPerBeat: fpb, totalBeats: beat, totalFrames: Math.max(1, Math.round(beat * fpb)), shots: out };
 }
 
-/** ~2.6 words a second at a relaxed explainer pace, until real TTS lengths exist. */
-export function estimateSpeechSeconds(text) {
-  const words = String(text).split(/\s+/).filter(Boolean).length;
-  return Math.max(1, words / 2.6);
+export const DEFAULT_WORDS_PER_MINUTE = 156;
+export const wordCount = (text) => String(text ?? "").split(/\s+/).filter(Boolean).length;
+
+/** Spoken length at the given delivery rate (default ~2.6 words a second), until real TTS lengths exist. */
+export function estimateSpeechSeconds(text, wordsPerMinute = DEFAULT_WORDS_PER_MINUTE) {
+  return Math.max(1, wordCount(text) / ((wordsPerMinute || DEFAULT_WORDS_PER_MINUTE) / 60));
+}
+
+/**
+ * Estimated runtime of one cut before any audio exists: the real timeline
+ * model (narration at the configured rate, lead/tail, whole bars, sung chorus
+ * words on beats, minBars), so choruses and musical padding are counted.
+ */
+export function estimateRuntime(spec, format = "main", wordsPerMinute = DEFAULT_WORDS_PER_MINUTE) {
+  const tl = buildTimeline(spec, format, {}, FPS, { wordsPerMinute });
+  const shots = shotsFor(spec, format);
+  const spokenWords = shots.reduce((n, s) => n + wordCount(s.narration), 0);
+  const sungWords = shots.reduce((n, s) => n + lyricWords(s.lyric).length, 0);
+  return {
+    seconds: tl.totalFrames / tl.fps,
+    spokenWords,
+    sungWords,
+    narrationSeconds: shots.reduce((n, s) => n + (s.narration ? estimateSpeechSeconds(s.narration, wordsPerMinute) : 0), 0),
+    shots: shots.length,
+    wordsPerMinute,
+  };
 }
 
 function defaultTransition(prev, next) {

@@ -1,0 +1,270 @@
+{
+  "version": 1,
+  "formats": {
+    "main": {
+      "scores": {
+        "accuracy": 4,
+        "clarity": 5,
+        "progression": 5,
+        "specificity": 5,
+        "examples": 5,
+        "engagement": 4,
+        "memorability": 5,
+        "formatFit": 3,
+        "music": 5,
+        "redundancy": 4
+      },
+      "blocking": [],
+      "findings": [
+        {
+          "shot": "traceroute-how",
+          "criterion": "accuracy",
+          "severity": "minor",
+          "problem": "The TTL-style 'counter that drops by one at every router, discards at zero and reports back' mechanism is a real and correct description of how traceroute works, but it is not covered by any dossier claim (the only linked claim is 'routers-forward-by-address', which says nothing about TTL/counters). This is new technical detail introduced beyond what the dossier supports.",
+          "fix": "Either add a dossier claim/source for the TTL mechanism, or soften the language to 'each test packet is built to expire after a set number of hops, revealing one router at a time' without asserting the exact counter mechanics as settled fact."
+        },
+        {
+          "shot": "split-packet-sizing",
+          "criterion": "accuracy",
+          "severity": "minor",
+          "problem": "The claim 'host-splits-data' is explicitly qualified in the dossier as 'thousands is a reasonable order-of-magnitude dramatization... not a fixed, universal number,' but the shot states a precise derived figure ('roughly seven thousand separate packets') from a specific 1500-byte/10MB assumption presented as a general fact about video clips.",
+          "fix": "Keep the Ethernet-MTU detail but frame it as one illustrative example ('a clip like that could break into something like seven thousand pieces') rather than implying this is the typical count for 'a ten-megabyte video clip' generally."
+        },
+        {
+          "shot": null,
+          "criterion": "formatFit",
+          "severity": "major",
+          "problem": "Estimated runtime is 8:00 against a 7:00 target (14.3% over, just under the 15% flag) with 33 shots versus the ~26 the duration budget implies. The extra shots (e.g., split-packet-sizing, traceroute-sample-setup + traceroute-sample-timing as two shots, fiber-cable-numbers-detail) each add real content, so this isn't filler, but collectively they crowd the pacing right up against the edge of the allowed window.",
+          "fix": "Trim roughly 60s: merge traceroute-sample-setup and traceroute-sample-timing into one shot, or fold split-packet-sizing's sizing detail into split-into-packets as a single sentence, to bring the runtime back toward 7:00."
+        },
+        {
+          "shot": "recap-one-hop-at-a-time",
+          "criterion": "redundancy",
+          "severity": "minor",
+          "problem": "The recap largely restates the resolution shot immediately before it and the three choruses ('no master plan... one hop at a time... number on every piece') without adding a new angle beyond re-stating the mental model.",
+          "fix": "Tighten the recap to add one genuinely new closing thought (e.g., why this resilience matters for the viewer directly) rather than re-summarizing what resolution-full-answer and the choruses already said."
+        }
+      ],
+      "summary": "The viewer learns a coherent, well-sequenced causal chain from packet addressing through hop-by-hop forwarding, the GPS-rerouting myth, TCP's numbering/resend reliability layer, and the physical glass-fiber medium, all tightly tied back to the opening 'what happens when you hit send' question. The biggest weakness is pacing: at 8:00 against a 7:00 target with more shots than the duration budget implies, plus a couple of technical details (traceroute's counter mechanism, the precise 'seven thousand packets' figure) that go slightly beyond what the dossier explicitly supports.",
+      "format": "main",
+      "inputHash": "2004a9f22d09a54e",
+      "scriptHash": "b3bb45a9fcf91ff6",
+      "outlineHash": "bec46f92e34cad22",
+      "at": "2026-10-11T04:32:23.340Z",
+      "verdict": {
+        "pass": true,
+        "average": 4.5,
+        "reasons": []
+      },
+      "estimate": {
+        "seconds": 477.7,
+        "spokenWords": 1070,
+        "sungWords": 39,
+        "wordsPerMinute": 156,
+        "verdict": "ok",
+        "message": "7:58 (target 7:00, allowed 5:00-10:00)"
+      },
+      "history": [
+        {
+          "at": "2026-10-11T04:32:23.340Z",
+          "scores": {
+            "accuracy": 4,
+            "clarity": 5,
+            "progression": 5,
+            "specificity": 5,
+            "examples": 5,
+            "engagement": 4,
+            "memorability": 5,
+            "formatFit": 3,
+            "music": 5,
+            "redundancy": 4
+          },
+          "verdict": {
+            "pass": true,
+            "average": 4.5,
+            "reasons": []
+          },
+          "revised": false
+        }
+      ]
+    },
+    "short": {
+      "scores": {
+        "accuracy": 4,
+        "clarity": 5,
+        "progression": 5,
+        "specificity": 4,
+        "examples": 4,
+        "engagement": 4,
+        "memorability": 4,
+        "formatFit": 5,
+        "music": 4,
+        "redundancy": 5
+      },
+      "blocking": [],
+      "findings": [
+        {
+          "shot": "reroute-boundary",
+          "criterion": "accuracy",
+          "severity": "minor",
+          "problem": "\"later packets detour, overtaking earlier ones\" is a specific sequencing detail not stated in the dossier. The dossier only supports that a failed link causes a path change for subsequent packets and that out-of-order delivery is possible; the vivid 'overtaking' framing is a plausible but unsupported embellishment.",
+          "fix": "Soften to something dossier-backed, e.g. \"If a link fails, later packets take a new route — which can scramble their order.\" This keeps the visual but ties the claim directly to packets-can-reroute-on-change without inventing a racing dynamic."
+        },
+        {
+          "shot": "chorus-rebuild",
+          "criterion": "memorability",
+          "severity": "minor",
+          "problem": "The chorus lyric \"Address it, number it, send it, rebuild it\" recaps the steps but doesn't land the core payoff from the outline's conclusion — that no single path or line has to survive. As written it's a process summary, not an insight.",
+          "fix": "Keep the process line but let the closing headline or a half-line gesture at the insight, e.g. pair the chorus with a headline like \"No Line Has to Survive\" instead of \"Rebuild the Message,\" so the takeaway sticks beyond just the mechanism steps."
+        },
+        {
+          "shot": "reassemble-resolution",
+          "criterion": "specificity",
+          "severity": "minor",
+          "problem": "\"got up to forty\" implies packets are numbered 1-40 individually, when TCP actually numbers by octet/byte offset, not by simple packet count. For a kids' Short this simplification is reasonable, but it's worth noting as a simplification rather than a literal mechanism.",
+          "fix": "No change required for this format — the simplification is acceptable for a 45s Short — but avoid extending this exact framing (packet index numbers) into the long-form script without the octet-counting caveat."
+        }
+      ],
+      "summary": "A viewer learns that a video is chopped into independently addressed, numbered packets forwarded hop-by-hop by routers with no global map, and reassembled/resent via TCP numbering at the far end — the Short stands alone and resolves its own opening question within a tight, well-paced 43 seconds. The biggest weakness is a couple of vivid but slightly unsupported specifics (packets 'overtaking' each other) and a chorus that recaps steps rather than crystallizing the resilience payoff.",
+      "format": "short",
+      "inputHash": "38816383136f17c4",
+      "scriptHash": "4d8fef7cf18fdb49",
+      "outlineHash": "f25619366c357e62",
+      "at": "2026-10-11T03:58:03.731Z",
+      "verdict": {
+        "pass": true,
+        "average": 4.4,
+        "reasons": []
+      },
+      "estimate": {
+        "seconds": 42.9,
+        "spokenWords": 73,
+        "sungWords": 8,
+        "wordsPerMinute": 156,
+        "verdict": "ok",
+        "message": "0:43 (target 0:45, allowed 0:30-1:00)"
+      },
+      "history": [
+        {
+          "at": "2026-10-11T03:42:15.952Z",
+          "scores": {
+            "accuracy": 4,
+            "clarity": 3,
+            "progression": 4,
+            "specificity": 3,
+            "examples": 4,
+            "engagement": 3,
+            "memorability": 3,
+            "formatFit": 4,
+            "music": 3,
+            "redundancy": 4
+          },
+          "verdict": {
+            "pass": false,
+            "average": 3.5,
+            "reasons": [
+              "clarity scored 3 (needs 4)",
+              "average 3.50 (needs 3.8)"
+            ]
+          },
+          "revised": true
+        },
+        {
+          "at": "2026-10-11T03:42:42.247Z",
+          "scores": {
+            "accuracy": 4,
+            "clarity": 3,
+            "progression": 4,
+            "specificity": 3,
+            "examples": 4,
+            "engagement": 4,
+            "memorability": 4,
+            "formatFit": 2,
+            "music": 3,
+            "redundancy": 4
+          },
+          "verdict": {
+            "pass": false,
+            "average": 3.5,
+            "reasons": [
+              "blocking: The script runs far over the Short target: about 0:56 estimated against 0:45, 121 spoken words against a roughly 94-word plan, and the 15% tolerance is exceeded. Several shots are packed with multiple ideas (hop-by-hop shot, resolution shot), which risks cramming so the mechanism can't be followed at pace.",
+              "formatFit scored 2 (minimum 3)",
+              "clarity scored 3 (needs 4)",
+              "average 3.50 (needs 3.8)"
+            ]
+          },
+          "revised": true
+        },
+        {
+          "at": "2026-10-11T03:43:07.698Z",
+          "scores": {
+            "accuracy": 4,
+            "clarity": 3,
+            "progression": 4,
+            "specificity": 3,
+            "examples": 3,
+            "engagement": 3,
+            "memorability": 3,
+            "formatFit": 4,
+            "music": 3,
+            "redundancy": 4
+          },
+          "verdict": {
+            "pass": false,
+            "average": 3.4,
+            "reasons": [
+              "clarity scored 3 (needs 4)",
+              "average 3.40 (needs 3.8)"
+            ]
+          },
+          "revised": false
+        },
+        {
+          "at": "2026-10-11T03:53:38.166Z",
+          "scores": {
+            "accuracy": 4,
+            "clarity": 3,
+            "progression": 4,
+            "specificity": 3,
+            "examples": 3,
+            "engagement": 3,
+            "memorability": 3,
+            "formatFit": 4,
+            "music": 3,
+            "redundancy": 4
+          },
+          "verdict": {
+            "pass": false,
+            "average": 3.4,
+            "reasons": [
+              "clarity scored 3 (needs 4)",
+              "average 3.40 (needs 3.8)"
+            ]
+          },
+          "revised": true
+        },
+        {
+          "at": "2026-10-11T03:58:03.731Z",
+          "scores": {
+            "accuracy": 4,
+            "clarity": 5,
+            "progression": 5,
+            "specificity": 4,
+            "examples": 4,
+            "engagement": 4,
+            "memorability": 4,
+            "formatFit": 5,
+            "music": 4,
+            "redundancy": 5
+          },
+          "verdict": {
+            "pass": true,
+            "average": 4.4,
+            "reasons": []
+          },
+          "revised": false
+        }
+      ]
+    }
+  }
+}

@@ -53,7 +53,10 @@ export const SCENES_3D = {
   "fiber-packets": "Light pulses (bits) racing through the glass fibres of a cut-away undersea cable; camera starts on the cable end and travels with the pulses. 10 s.",
 };
 
-export const EDITORIAL = ["brief", "purpose", "notes", "direction"];
+export const EDITORIAL = ["brief", "purpose", "notes", "direction", "editorial", "claims"];
+
+/** A storyboard is written for one format; older storyboards (no format) serve both cuts. */
+export const SPEC_FORMATS = ["main", "short"];
 
 /** Named points on built-in subjects for anatomy callouts (x, y in 0-1 of the subject box). */
 export const ANCHORS = {
@@ -194,6 +197,8 @@ export function validateSpec(spec, { slug } = {}) {
   if (!ID_RE.test(spec.slug ?? "")) p("slug must be kebab-case");
   if (!isStr(spec.title)) p("title is required");
   if (spec.world != null && !WORLDS.includes(spec.world)) p(`world must be one of ${WORLDS.join(", ")}`);
+  if (spec.format != null && !SPEC_FORMATS.includes(spec.format)) p(`format must be one of ${SPEC_FORMATS.join(", ")}`);
+  if (spec.editorial != null && !isObj(spec.editorial)) p("editorial must be an object");
   if (spec.direction != null && (!isObj(spec.direction) || !["draft", "directed"].includes(spec.direction.status))) p("direction.status must be draft or directed");
   const m = spec.music;
   if (!isObj(m)) p("music {bpm} is required");
@@ -227,6 +232,7 @@ export function validateSpec(spec, { slug } = {}) {
       if (!isNum(a?.beat) || a.beat < 0) p(`${at}: accents[${j}].beat must be >= 0`);
       if (a?.sfx != null && !SFX.includes(a.sfx)) p(`${at}: accents[${j}].sfx must be one of ${SFX.join(", ")}`);
     });
+    if (s.claims != null && (!Array.isArray(s.claims) || !s.claims.every((c) => typeof c === "string"))) p(`${at}: claims must be a list of research claim ids`);
     (s.assets ?? []).forEach((a, j) => { if (!ID_RE.test(a?.id ?? "")) p(`${at}: assets[${j}].id must be kebab-case`); });
     checkVisual(s.visual, at, p);
   });
@@ -252,7 +258,7 @@ export function lintSpec(spec) {
   const mascots = shots.filter((s) => s.mascot || s.visual?.type === "character").length;
   if (shots.length >= 6 && mascots / shots.length > 0.35) warnings.push(`the mascot appears in ${mascots} of ${shots.length} shots; keep it for moments that need a guide`);
   if (!shots.some((s) => s.section === "chorus")) warnings.push("no chorus shot: the key idea never gets its musical hook");
-  if (!shots.some((s) => s.short)) warnings.push("no shot is marked short: the vertical cut will be chosen automatically");
+  if (!spec.format && !shots.some((s) => s.short)) warnings.push("no shot is marked short: the vertical cut will be chosen automatically");
   return warnings;
 }
 

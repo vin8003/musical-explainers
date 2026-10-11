@@ -71,13 +71,16 @@ const STATUS_CLASS = { queued: "", scripting: "run", review: "hi", approved: "ok
 const pill = (text, cls = "", dot = false, title = "") => `<span class="pill ${cls}" ${title ? `title="${esc(title)}"` : ""}>${dot ? '<span class="dot"></span>' : ""}${esc(text)}</span>`;
 const statusPill = (s) => pill(s, STATUS_CLASS[s] ?? "");
 
-const STAGE_LABEL = { script: "Script", factcheck: "Fact-check", direct: "Storyboard", assets: "Assets", audio: "Audio", render: "Render", qa: "Quality", package: "Package" };
+const STAGE_LABEL = { research: "Research", outline: "Outline", script: "Script", review: "Editorial review", factcheck: "Fact-check", direct: "Storyboard", assets: "Assets", audio: "Audio", render: "Render", qa: "Quality", package: "Package" };
 const STAGE_HELP = {
-  script: "Claude writes narration, chorus lyric and sections (claude -p).",
-  factcheck: "Claude checks every spoken and on-screen claim with web search; flagged text is revised (max 2 rounds).",
+  research: "Claude qualifies the topic, picks the strongest angle and builds a sourced research dossier (web search).",
+  outline: "Per format: how the viewer's understanding changes, beat by beat, with the claims each beat rests on and planned lengths.",
+  script: "Per format: Claude writes the landscape and the Short separately from the dossier and outline, to the configured duration.",
+  review: "Per format: an independent editorial rubric (clarity, depth, examples, format fit...). Weak scripts are revised once, then fail.",
+  factcheck: "Claude verifies every spoken and on-screen claim with web search; flagged text gets targeted revisions (max 2 rounds).",
   direct: "Claude directs each shot: visual system, labels, camera, transitions, accents.",
   assets: "Resolves illustrations and licensed files; renders optional Blender 3D clips.",
-  audio: "Narration, composed music, sung chorus, SFX, ducking and -14 LUFS mix.",
+  audio: "Narration, composed music, sung chorus, SFX, ducking and -14 LUFS mix; measured length checked against the duration range.",
   render: "Remotion renders a new candidate (16:9 and 9:16). Old candidates are kept.",
   qa: "Checks the rendered files: streams, loudness, sampled frames, contact sheets.",
   package: "Thumbnail and YouTube metadata (chapters, sources, credits).",
@@ -108,6 +111,12 @@ function progressBar(p) {
 }
 
 const AUDIO_TEXT = { full: "Full audio", partial: "Partial audio", silent: "Silent preview" };
+const FAILURE_CLASS = { "content quality": "bad", "factual verification": "bad", configuration: "warn", "media duration": "warn", "rendered-media QA": "bad" };
+const failurePill = (j) => (j?.failure ? pill(`failed: ${j.failure}`, FAILURE_CLASS[j.failure] ?? "bad") : "");
+const FMT_SHORT = { main: "Landscape", short: "Short" };
+const fmtRange = (d) => (d ? `${dur(d.targetSeconds ?? d.target)} (allowed ${dur(d.minSeconds ?? d.min)}–${dur(d.maxSeconds ?? d.max)})` : "");
+const verdictPill = (v) => (v ? pill(v === "ok" ? "within target" : v === "off-target" ? "off target" : v === "short" ? "too short" : v === "long" ? "too long" : v, v === "ok" ? "ok" : "bad") : "");
+
 const audioPill = (status) => (status ? pill(AUDIO_TEXT[status] ?? status, status === "full" ? "ok" : status === "partial" ? "warn" : "bad") : pill("No audio", "bad"));
 
 // ---------- routing ----------
@@ -115,6 +124,7 @@ const audioPill = (status) => (status ? pill(AUDIO_TEXT[status] ?? status, statu
 function parseRoute() {
   const parts = location.hash.replace(/^#\/?/, "").split("/").filter(Boolean).map(decodeURIComponent);
   if (parts[0] === "topics") return { name: "topics" };
+  if (parts[0] === "settings") return { name: "settings" };
   if (parts[0] === "jobs" && parts[1]) return { name: "job", id: Number(parts[1]) };
   if (parts[0] === "jobs") return { name: "jobs" };
   if (parts[0] === "video" && parts[1]) return { name: "video", slug: parts[1], tab: parts[2] ?? "overview" };
@@ -123,9 +133,16 @@ function parseRoute() {
 
 async function render() {
   const prev = S.route;
-  S.route = parseRoute();
+  const next = parseRoute();
+  // Unsaved settings edits: ask before leaving the page.
+  if (prev.name === "settings" && next.name !== "settings" && S.settingsDirty && !confirm("You have unsaved duration settings. Leave without saving?")) {
+    history.replaceState(null, "", "#/settings");
+    return;
+  }
+  if (next.name !== "settings") S.settingsDirty = false;
+  S.route = next;
   if (prev.name === "video" && (S.route.name !== "video" || S.route.slug !== prev.slug)) {
-    Object.assign(S, { spec: null, specDirty: false, logJobId: null, cand: null, compare: null, openShot: null });
+    Object.assign(S, { spec: null, specDirty: false, specFormat: "main", logJobId: null, cand: null, compare: null, openShot: null });
   }
   $$(".top nav a").forEach((a) => a.classList.toggle("active", a.dataset.nav === (S.route.name === "video" ? "videos" : S.route.name === "job" ? "jobs" : S.route.name)));
   try {
@@ -134,6 +151,7 @@ async function render() {
     else if (S.route.name === "jobs") await renderJobs();
     else if (S.route.name === "job") await renderJob();
     else if (S.route.name === "video") await renderVideo();
+    else if (S.route.name === "settings") await renderSettings();
   } catch (err) {
     app.innerHTML = `<div class="panel err">${esc(err.message)}</div>`;
   }
@@ -141,7 +159,7 @@ async function render() {
 
 window.addEventListener("hashchange", render);
 window.addEventListener("beforeunload", (e) => {
-  if (S.specDirty) e.preventDefault();
+  if (S.specDirty || S.settingsDirty) e.preventDefault();
 });
 
 // ---------- videos list ----------
@@ -194,7 +212,7 @@ function runDialog(slug, preset = "continue") {
     <h2>Run pipeline</h2>
     <p class="muted small">Runs <code>npm run pipeline</code> for <b>${esc(slug)}</b> on this Mac. Claude stages use your logged-in <code>claude</code> CLI. Stages that are already up to date are skipped. Jobs run one at a time.</p>
     ${Object.entries(S.meta.modes).map(([k, label]) => `<label class="check" style="margin:6px 0"><input type="radio" name="mode" value="${k}" ${k === preset ? "checked" : ""}/> ${esc(label)}</label><br/>`).join("")}
-    <label class="check" style="margin:10px 0 0"><input type="checkbox" name="fresh"/> Write a fresh script (the current storyboard is archived first)</label><br/>
+    <label class="check" style="margin:10px 0 0"><input type="checkbox" name="fresh"/> Re-plan and write fresh scripts (outline + script; storyboards archived first, research kept)</label><br/>
     <label class="check" style="margin:6px 0 0"><input type="checkbox" name="preview"/> Preview render (half resolution, faster; can't be approved)</label><br/>
     <label class="check" style="margin:6px 0 0"><input type="checkbox" name="visualReview"/> Ask Claude to inspect the rendered contact sheets (uses subscription)</label>
     <div class="row" style="justify-content:flex-end;margin-top:14px"><button class="ghost" value="cancel">Cancel</button><button class="primary" value="go">Start</button></div>`;
@@ -342,7 +360,7 @@ async function renderJobs() {
         <td class="muted">${j.id}</td>
         <td class="title"><a href="#/video/${esc(j.slug)}">${esc(j.title)}</a></td>
         <td class="small">${esc(j.modeLabel)}${j.fresh ? " · fresh script" : ""}</td>
-        <td>${jobPill(j)}${j.error ? `<div class="small err">${esc(j.error)}</div>` : ""}${progressBar(j.progress)}</td>
+        <td>${jobPill(j)} ${failurePill(j)}${j.error ? `<div class="small err">${esc(j.error)}</div>` : ""}${progressBar(j.progress)}</td>
         <td class="small muted">${ago(j.startedAt ?? j.createdAt)}</td>
         <td class="small muted">${elapsed(j.startedAt, j.endedAt)}</td>
         <td><div class="row" style="justify-content:flex-end"><a href="#/jobs/${j.id}"><button class="sm">Log</button></a>
@@ -369,10 +387,13 @@ async function renderJob() {
   bindCancel();
 }
 
-const jobHeadHtml = (j) => `${jobPill(j)} <span class="muted small">${elapsed(j.startedAt, j.endedAt)}</span>
+const jobSettingsHtml = (j) => (j.settings ? `<div class="small muted" style="flex-basis:100%">Durations for this job: ${["main", "short"].map((f) => `${FMT_SHORT[f]} ${esc(fmtRange(j.settings.settings.formats[f]))}`).join(" · ")}</div>` : "");
+const jobHeadHtml = (j) => `${jobPill(j)} ${failurePill(j)} <span class="muted small">${elapsed(j.startedAt, j.endedAt)}</span>
   ${j.state === "running" || j.state === "queued" ? `<button class="sm bad" data-cancel="${j.id}">Cancel</button>` : ""}
   <div style="min-width:220px">${progressBar(j.progress)}</div>
-  ${j.error ? `<div class="small err" style="flex-basis:100%">${esc(j.error)}${j.hint ? `<div class="muted">${esc(j.hint)}</div>` : ""}</div>` : ""}`;
+  ${j.error ? `<div class="small err" style="flex-basis:100%">${esc(j.error)}${j.hint ? `<div class="muted">${esc(j.hint)}</div>` : ""}</div>` : ""}
+  ${j.durations ? `<div class="small" style="flex-basis:100%;color:var(--orange)">${Object.entries(j.durations).map(([f, d]) => `${FMT_SHORT[f]}: measured ${dur(d.seconds)} (narration ${dur(d.narrationSeconds)}), allowed ${dur(d.minSeconds)}–${dur(d.maxSeconds)}`).join(" · ")}</div>` : ""}
+  ${jobSettingsHtml(j)}`;
 
 function setLog(text) {
   const el = $("#log");
@@ -392,13 +413,17 @@ const cleanLog = (t) => t.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "").replace(/[^\n]*
 
 // ---------- video detail ----------
 
+/** The storyboard being edited: the landscape one, or the independent Short one. */
+const editedSpec = (v) => (S.specFormat === "short" ? v.shortSpecJson : v.specJson);
+
 async function loadVideo(slug, fresh = false) {
   S.video = await api(`/api/videos/${slug}${fresh ? "?fresh=1" : ""}`);
-  if (!S.specDirty) S.spec = S.video.specJson ? structuredClone(S.video.specJson) : null;
+  if (S.specFormat === "short" && !S.video.shortSpecJson) S.specFormat = "main";
+  if (!S.specDirty) S.spec = editedSpec(S.video) ? structuredClone(editedSpec(S.video)) : null;
   return S.video;
 }
 
-const TABS = [["overview", "Overview"], ["storyboard", "Storyboard"], ["factcheck", "Fact-check"], ["assets", "Assets & audio"], ["quality", "Quality"], ["review", "Review"], ["logs", "Logs"]];
+const TABS = [["overview", "Overview"], ["research", "Research & review"], ["storyboard", "Storyboard"], ["factcheck", "Fact-check"], ["assets", "Assets & audio"], ["quality", "Quality"], ["review", "Review"], ["logs", "Logs"]];
 
 async function renderVideo() {
   const { slug, tab } = S.route;
@@ -415,6 +440,7 @@ async function renderVideo() {
   const body = $("#tab");
   if (tab === "storyboard" || tab === "spec") renderStoryboardTab(body);
   else if (tab === "factcheck") renderFactTab(body);
+  else if (tab === "research") renderResearchTab(body);
   else if (tab === "assets") renderAssetsTab(body);
   else if (tab === "quality") renderQualityTab(body);
   else if (tab === "review") renderReviewTab(body);
@@ -459,8 +485,9 @@ function renderOverviewTab(body) {
         </div>`;
       }).join("")}</div>
       ${j ? `<div style="margin-top:12px">${jobPill(j)} <a href="#/video/${esc(v.slug)}/logs">watch the log</a>${progressBar(j.progress)}</div>` : ""}
-      ${!j && v.lastJob ? `<div style="margin-top:12px" class="small">Last run: ${jobPill(v.lastJob)} ${esc(v.lastJob.modeLabel)} · ${ago(v.lastJob.endedAt)} · <a href="#/jobs/${v.lastJob.id}">log</a>${v.lastJob.error ? `<div class="err">${esc(v.lastJob.error)}${v.lastJob.hint ? `<div class="muted">${esc(v.lastJob.hint)}</div>` : ""}</div>` : ""}</div>` : ""}
+      ${!j && v.lastJob ? `<div style="margin-top:12px" class="small">Last run: ${jobPill(v.lastJob)} ${failurePill(v.lastJob)} ${esc(v.lastJob.modeLabel)} · ${ago(v.lastJob.endedAt)} · <a href="#/jobs/${v.lastJob.id}">log</a>${v.lastJob.error ? `<div class="err">${esc(v.lastJob.error)}${v.lastJob.hint ? `<div class="muted">${esc(v.lastJob.hint)}</div>` : ""}</div>` : ""}</div>` : ""}
     </div>
+    ${formatsPanel(v)}
     ${issues.length ? `<div class="panel"><h3>Storyboard checks</h3>${issues.map((x) => `<div class="small ${x.cls === "bad" ? "err" : ""}" style="${x.cls === "warn" ? "color:var(--orange)" : ""}">${x.cls === "bad" ? "✕" : "⚠"} ${esc(x.t)}</div>`).join("")}</div>` : ""}
     <div class="grid2">
       <div class="panel">
@@ -483,8 +510,214 @@ function renderOverviewTab(body) {
       </div>
     </div>`;
   $("#continue", body).onclick = () => startJob(v.slug, { mode: "continue" }).catch(() => {});
-  $("#freshBtn", body).onclick = () => confirmDialog("Write a fresh script?", "The current storyboard is archived to out/<slug>/archive/, then Claude writes a new script and the pipeline continues from there. Approved renders are kept.", "Start", () => startJob(v.slug, { mode: "continue", fresh: true }));
+  $("#freshBtn", body).onclick = () => confirmDialog("Write fresh scripts?", "The current storyboards are archived to out/<slug>/archive/, then Claude re-plans both outlines from the research dossier and writes new landscape and Short scripts, and the pipeline continues from there. Approved renders are kept.", "Start", () => startJob(v.slug, { mode: "continue", fresh: true }));
   $$("[data-stage]", body).forEach((b) => (b.onclick = () => startJob(v.slug, { mode: "stage", stage: b.dataset.stage, preview: Boolean(b.dataset.preview), visualReview: Boolean(b.dataset.review) }).catch(() => {})));
+}
+
+/** Per cut: configured target/range, script estimate, measured narration and final length, editorial verdict. */
+function formatsPanel(v) {
+  const F = v.formats;
+  if (!F) return "";
+  const run = v.lastRunSettings?.formats;
+  const row = (f) => {
+    const x = F[f];
+    if (!x) return "";
+    const snap = run?.[f];
+    const changed = snap && (snap.targetSeconds !== x.target || snap.minSeconds !== x.min || snap.maxSeconds !== x.max);
+    return `<tr>
+      <td><b>${esc(FMT_SHORT[f])}</b><div class="small muted">${f === "main" ? "16:9" : "9:16"}${x.ownScript ? "" : " · no own script yet"}</div></td>
+      <td>${dur(x.target)}<div class="small muted">${dur(x.min)}–${dur(x.max)}</div>${changed ? `<div class="small" style="color:var(--orange)">last run used ${esc(fmtRange(snap))}</div>` : ""}</td>
+      <td>${x.estimate ? `${dur(x.estimate.seconds)} ${verdictPill(x.estimate.verdict)}<div class="small muted">${x.estimate.spokenWords} spoken + ${x.estimate.sungWords} sung words</div>` : "—"}</td>
+      <td>${x.narrationSeconds != null ? dur(x.narrationSeconds) : "—"}</td>
+      <td>${x.audioSeconds != null ? `${dur(x.audioSeconds)} ${verdictPill(x.audioVerdict)}` : "—"}</td>
+      <td>${x.finalSeconds != null ? `${dur(x.finalSeconds)} ${verdictPill(x.finalVerdict)}` : "—"}</td>
+      <td>${x.review ? `${pill(x.review.pass ? `passed ${x.review.average}` : `failed ${x.review.average}`, x.review.pass ? "ok" : "bad")}${x.review.pass ? "" : `<div class="small err">${esc([...x.review.blocking, ...x.review.reasons].slice(0, 3).join("; "))}</div>`}` : pill("not reviewed")}</td>
+    </tr>`;
+  };
+  return `<div class="panel tablewrap"><div class="row" style="margin-bottom:6px"><h3 class="grow" style="margin:0">Formats and duration</h3><a class="small" href="#/settings">Duration settings</a></div>
+    <table class="small"><thead><tr><th>Cut</th><th>Target / allowed</th><th>Script estimate</th><th>Narration (measured)</th><th>Soundtrack (measured)</th><th>Final video</th><th>Editorial review</th></tr></thead>
+    <tbody>${["main", "short"].map(row).join("")}</tbody></table>
+    <div class="small muted" style="margin-top:6px">Estimates use the configured delivery rate and the real timeline (bars, sung chorus). Measured lengths come from the audio stage and the rendered file.</div></div>`;
+}
+
+// ----- research & editorial review -----
+
+function renderResearchTab(body) {
+  const v = S.video;
+  const r = v.research;
+  const outlines = v.outline?.formats ?? {};
+  const reviews = v.editorialReview?.formats ?? {};
+  if (!r) {
+    body.innerHTML = `<div class="panel empty">No research dossier yet. Videos are now researched before any script is written. <button class="primary" id="runRes" ${v.job ? "disabled" : ""}>Run research</button></div>`;
+    $("#runRes", body).onclick = () => startJob(v.slug, { mode: "stage", stage: "research" }).catch(() => {});
+    return;
+  }
+  const q = r.qualification;
+  const cls = { supported: "ok", qualified: "warn", insufficient: "bad", excluded: "bad" };
+  const rubric = S.meta.rubric ?? {};
+  const reviewHtml = (f) => {
+    const x = reviews[f];
+    if (!x) return `<div class="small muted">Not reviewed yet.</div>`;
+    return `<div class="row">${pill(x.verdict.pass ? "PASS" : "FAIL", x.verdict.pass ? "ok" : "bad")} <span class="small muted">average ${x.verdict.average} · ${ago(Date.parse(x.at))} · ${x.history.length} round(s)</span></div>
+      <p class="small">${esc(x.summary)}</p>
+      ${x.verdict.reasons.length ? `<div class="small err">${x.verdict.reasons.map(esc).join("<br>")}</div>` : ""}
+      <table class="small"><tbody>${Object.keys(rubric).map((k) => `<tr><td title="${esc(rubric[k])}">${esc(k)}</td><td>${"●".repeat(x.scores[k] ?? 0)}${"○".repeat(5 - (x.scores[k] ?? 0))} ${x.scores[k] ?? "?"}</td></tr>`).join("")}</tbody></table>
+      ${x.blocking.length ? `<div class="small err" style="margin-top:6px"><b>Blocking:</b> ${x.blocking.map((b) => esc(`${b.shot ? b.shot + ": " : ""}${b.problem}`)).join("<br>")}</div>` : ""}
+      ${x.findings.length ? `<details style="margin-top:6px"><summary class="small">${x.findings.length} finding(s)</summary>${x.findings.map((f) => `<div class="small" style="margin:4px 0">${pill(f.severity ?? "", f.severity === "major" ? "bad" : "warn")} <b>${esc(f.shot ?? "")}</b> [${esc(f.criterion ?? "")}] ${esc(f.problem)}<div class="muted">Fix: ${esc(f.fix)}</div></div>`).join("")}</details>` : ""}`;
+  };
+  const outlineHtml = (f) => {
+    const o = outlines[f];
+    if (!o) return `<div class="small muted">No outline yet.</div>`;
+    return `<div class="small"><b>Opening:</b> ${esc(o.openingQuestion)}</div>
+      <div class="small"><b>Understanding:</b> ${esc(o.understandingChange)}</div>
+      <div class="small muted">${esc(o.structure)} · ${o.beats.length} beats · planned ${dur(o.beats.reduce((n, b) => n + b.seconds, 0))} · fit: ${esc(o.fit.verdict)} (${esc(o.fit.note)})</div>
+      ${f === "short" && o.coreInsight ? `<div class="small"><b>Core insight:</b> ${esc(o.coreInsight)}</div>` : ""}
+      <ol class="small" style="margin:6px 0 0 18px;padding:0">${o.beats.map((b) => `<li><b>${esc(b.role)}</b> ${esc(b.point)} <span class="muted">${dur(b.seconds)} · ${esc((b.claimIds ?? []).join(", "))}</span></li>`).join("")}</ol>
+      <div class="small" style="margin-top:4px"><b>Conclusion:</b> ${esc(o.conclusion)}</div>
+      ${o.chorus ? `<div class="small" style="color:var(--yellow)">♪ ${esc(o.chorus.line)} <span class="muted">(${esc(o.chorus.reinforces)})</span></div>` : ""}
+      ${o.longFormOnly?.length ? `<div class="small muted">Long-form only: ${esc(o.longFormOnly.join("; "))}</div>` : ""}`;
+  };
+  body.innerHTML = `
+    <div class="panel">
+      <div class="row" style="margin-bottom:8px"><h3 class="grow" style="margin:0">Topic qualification</h3>${pill(q.verdict, q.verdict === "proceed" ? "ok" : q.verdict === "narrow" ? "warn" : "bad")} <span class="small muted"><code>specs/${esc(v.slug)}.research.json</code> · ${ago(Date.parse(r.at))}</span>
+        <button class="sm" data-stage="research" ${v.job ? "disabled" : ""}>Re-run research</button></div>
+      <div><b>${esc(q.centralQuestion)}</b></div>
+      <div class="small">Angle: ${esc(q.selectedAngle)} <span class="muted">— ${esc(q.reason)}</span></div>
+      <div class="small muted">Supports about ${q.supportedMinutes.min}–${q.supportedMinutes.max} min without padding · Short insight: ${esc(q.shortInsight)}</div>
+      <div class="small muted">${Object.entries(q.scores).map(([k, n]) => `${esc(k)} ${n}/5`).join(" · ")}</div>
+      ${q.angles?.length > 1 ? `<details><summary class="small">Angles compared (${q.angles.length})</summary>${q.angles.map((a) => `<div class="small" style="margin:4px 0"><b>${esc(a.angle)}</b> ${pill(a.evidence ?? "")}<div class="muted">+ ${esc(a.strengths)} · − ${esc(a.weaknesses)}</div></div>`).join("")}</details>` : ""}
+    </div>
+    <div class="panel">
+      <h3>Thesis and mechanism</h3>
+      <div><b>${esc(r.thesis.statement)}</b></div>
+      <div class="small">Mental model: ${esc(r.thesis.mentalModel)} <span class="muted">(${esc(r.thesis.claimIds.join(", "))})</span></div>
+      <p class="small">${esc(r.mechanism)}</p>
+      ${r.misconceptions.map((m) => `<div class="small">✕ ${esc(m.misconception)} → ✓ ${esc(m.correction)}</div>`).join("")}
+      <details style="margin-top:6px"><summary class="small">Examples, insights, uncertainties</summary>
+        ${r.examples.map((e) => `<div class="small">• [${esc(e.kind ?? "")}] ${esc(e.description)}${e.caveat ? ` <span class="muted">(caveat: ${esc(e.caveat)})</span>` : ""}</div>`).join("")}
+        <div class="small" style="margin-top:6px"><b>Insights (most valuable first)</b></div>${r.insights.map((x) => `<div class="small">${esc(x.insight)}</div>`).join("")}
+        ${r.uncertainties.length ? `<div class="small" style="margin-top:6px"><b>Uncertainties</b></div>${r.uncertainties.map((x) => `<div class="small muted">${esc(x)}</div>`).join("")}` : ""}
+        <div class="small muted" style="margin-top:6px">${esc(r.sourceQuality)}</div>
+      </details>
+    </div>
+    <div class="grid2">
+      ${["main", "short"].map((f) => `<div class="panel"><div class="row" style="margin-bottom:6px"><h3 class="grow" style="margin:0">${esc(FMT_SHORT[f])} outline</h3><button class="sm ghost" data-stage="outline" ${v.job ? "disabled" : ""}>Re-plan</button></div>${outlineHtml(f)}</div>`).join("")}
+    </div>
+    <div class="grid2">
+      ${["main", "short"].map((f) => `<div class="panel"><div class="row" style="margin-bottom:6px"><h3 class="grow" style="margin:0">${esc(FMT_SHORT[f])} editorial review</h3><button class="sm ghost" data-stage="review" ${v.job ? "disabled" : ""}>Re-review</button></div>${reviewHtml(f)}</div>`).join("")}
+    </div>
+    <div class="panel"><h3>Claims (${r.claims.length})</h3>
+      ${r.claims.map((c) => `<div class="claim ${c.status === "supported" ? "ok" : c.status === "qualified" ? "fix" : "cut"}">
+        <div class="row"><span class="c grow">${esc(c.text)}</span>${pill(c.id)}${pill(c.status, cls[c.status])}</div>
+        ${c.qualification ? `<div class="small corr">Qualification: ${esc(c.qualification)}</div>` : ""}${c.note ? `<div class="small muted">${esc(c.note)}</div>` : ""}
+        ${c.sources?.length ? `<ul>${c.sources.map((s) => `<li class="small"><a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">${esc(s.title || s.url)}</a> ${pill(s.kind)} ${pill(s.accessed === "fetched" ? "opened" : "search result only", s.accessed === "fetched" ? "ok" : "warn")}<div class="muted">${esc(s.passage)} — supports: ${esc(s.supports)}</div></li>`).join("")}</ul>` : ""}
+      </div>`).join("")}
+    </div>`;
+  $$("[data-stage]", body).forEach((b) => (b.onclick = () => startJob(v.slug, { mode: "stage", stage: b.dataset.stage }).catch(() => {})));
+}
+
+// ----- settings: video formats and duration -----
+
+let settingsSchema = null;
+const loadSettingsSchema = async () => (settingsSchema ??= await import("/schema/settings.mjs"));
+
+async function renderSettings() {
+  const [data, schema] = await Promise.all([api("/api/settings"), loadSettingsSchema()]);
+  S.settings = data;
+  const eff = data.settings;
+  const mmss = (sec) => ({ m: Math.floor(sec / 60), s: Math.round(sec % 60) });
+  const durInput = (f, k, label, help) => {
+    const v = mmss(eff.formats[f][k]);
+    return `<div class="field"><label for="${f}-${k}-m">${label}</label>
+      <div class="row dur" style="flex-wrap:nowrap"><input id="${f}-${k}-m" data-f="${f}" data-k="${k}" data-u="m" type="number" min="0" step="1" inputmode="numeric" value="${v.m}" aria-label="${label} minutes" /><span class="small muted">min</span>
+      <input id="${f}-${k}-s" data-f="${f}" data-k="${k}" data-u="s" type="number" min="0" max="59" step="1" inputmode="numeric" value="${v.s}" aria-label="${label} seconds" /><span class="small muted">sec</span></div>
+      <div class="small muted">${help}</div></div>`;
+  };
+  const card = (f) => `<div class="panel" data-format="${f}">
+      <div class="row" style="margin-bottom:8px"><h3 class="grow" style="margin:0">${esc(data.labels[f])}</h3><button class="sm ghost" data-reset="${f}">Reset to defaults</button></div>
+      ${durInput(f, "targetSeconds", "Target duration", "What scripts are written for.")}
+      <div class="grid2" style="gap:8px">${durInput(f, "minSeconds", "Minimum", "Shorter fails.")}${durInput(f, "maxSeconds", "Maximum", "Longer fails.")}</div>
+      <div class="small muted">Default: ${esc(fmtRange(data.defaults.formats[f]))}</div>
+      <div class="err small" data-err="${f}"></div>
+    </div>`;
+  app.innerHTML = `
+    <div class="pagehead"><div><h1>Settings</h1><div class="sub">Saved in <code>${esc(data.path)}</code>. New jobs take a snapshot when they start; running and finished jobs keep the settings they started with.</div></div></div>
+    <div class="panel"><h3>In effect now</h3>
+      <div class="row">${["main", "short"].map((f) => `<span>${esc(data.labels[f])}: <b>${esc(fmtRange(eff.formats[f]))}</b></span>`).join(" · ")} · <span>Narration ${eff.narration.wordsPerMinute} wpm, tolerance ±${Math.round(eff.narration.targetTolerance * 100)}%</span></div>
+      <div class="small muted">Source: ${esc(data.source === "defaults" ? "built-in defaults (nothing saved yet)" : data.source === "file" ? "saved settings" : "saved settings, with defaults for missing parts")}${data.at ? ` · saved ${ago(data.at)}` : ""}</div>
+      ${data.warnings.map((w) => `<div class="small" style="color:var(--orange)">⚠ ${esc(w)}</div>`).join("")}
+    </div>
+    <form id="settingsForm" novalidate>
+      <h2>Video formats and duration <span id="setDirty" class="pill warn" hidden>unsaved</span></h2>
+      <div class="grid2">${card("main")}${card("short")}</div>
+      <div class="panel">
+        <h3>Runtime estimation</h3>
+        <div class="grid2" style="gap:8px">
+          <div class="field"><label for="wpm">Narration delivery rate (words per minute)</label><input id="wpm" type="number" min="60" max="300" step="1" value="${eff.narration.wordsPerMinute}" /><div class="small muted">Used to estimate a script's runtime before audio exists. The audio stage reports the measured rate, so you can calibrate this.</div></div>
+          <div class="field"><label for="tol">Target tolerance (%)</label><input id="tol" type="number" min="1" max="100" step="1" value="${Math.round(eff.narration.targetTolerance * 100)}" /><div class="small muted">The acceptance window: the measured audio and the rendered video must land within this share of the target (and inside the allowed range), or the job fails and the script is revised once.</div></div>
+        </div>
+        <div class="err small" data-err="narration"></div>
+      </div>
+      <div id="setErr" class="err small" role="alert"></div>
+      <div class="row" style="justify-content:flex-end"><button type="button" class="ghost" id="setRevert" disabled>Discard changes</button><button type="submit" class="primary" id="setSave" disabled>Save settings</button></div>
+    </form>`;
+  const form = $("#settingsForm");
+  const read = () => {
+    const num = (el) => (el.value.trim() === "" ? NaN : Number(el.value));
+    const out = { formats: { main: {}, short: {} }, narration: { wordsPerMinute: num($("#wpm")), targetTolerance: num($("#tol")) / 100 } };
+    const unitErrors = [];
+    for (const f of ["main", "short"])
+      for (const k of ["targetSeconds", "minSeconds", "maxSeconds"]) {
+        const m = num($(`[data-f=${f}][data-k=${k}][data-u=m]`, form));
+        const sec = num($(`[data-f=${f}][data-k=${k}][data-u=s]`, form));
+        if (!(m >= 0) || !(sec >= 0) || sec > 59 || !Number.isInteger(m) || !Number.isInteger(sec)) unitErrors.push(`${data.labels[f]}: ${k.replace("Seconds", "")} needs whole minutes and 0-59 seconds`);
+        out.formats[f][k] = m * 60 + sec;
+      }
+    return { out, unitErrors };
+  };
+  const check = () => {
+    const { out, unitErrors } = read();
+    const problems = [...unitErrors, ...schema.validateSettings(out)];
+    for (const f of ["main", "short"]) $(`[data-err=${f}]`, form).textContent = problems.filter((x) => x.startsWith(data.labels[f])).join(" · ");
+    $("[data-err=narration]", form).textContent = problems.filter((x) => /rate|tolerance/i.test(x)).join(" · ");
+    $("#setSave").disabled = !S.settingsDirty || problems.length > 0;
+    return { out, problems };
+  };
+  const dirty = () => {
+    S.settingsDirty = true;
+    $("#setDirty").hidden = false;
+    $("#setRevert").disabled = false;
+    check();
+  };
+  $$("input", form).forEach((el) => (el.oninput = dirty));
+  $$("[data-reset]", form).forEach((b) => (b.onclick = () => {
+    const f = b.dataset.reset;
+    for (const k of ["targetSeconds", "minSeconds", "maxSeconds"]) {
+      const v = mmss(data.defaults.formats[f][k]);
+      $(`[data-f=${f}][data-k=${k}][data-u=m]`, form).value = v.m;
+      $(`[data-f=${f}][data-k=${k}][data-u=s]`, form).value = v.s;
+    }
+    dirty();
+    toast(`${data.labels[f]} reset to the defaults; save to apply`);
+  }));
+  $("#setRevert").onclick = () => { S.settingsDirty = false; renderSettings(); };
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    const { out, problems } = check();
+    if (problems.length) return toast("Fix the highlighted values first", true);
+    $("#setSave").disabled = true;
+    try {
+      await api("/api/settings", { method: "PUT", body: out });
+      S.settingsDirty = false;
+      toast("Settings saved. New jobs will use them.");
+      renderSettings();
+    } catch (err) {
+      $("#setErr").textContent = `Not saved: ${err.message}`;
+      toast(`Not saved: ${err.message}`, true);
+      $("#setSave").disabled = false;
+    }
+  };
+  check();
 }
 
 // ----- storyboard editor -----
@@ -503,15 +736,16 @@ function renderStoryboardTab(body) {
     return;
   }
   const spec = S.spec;
-  const tl = v.timeline;
+  const tl = S.specFormat === "short" ? v.timelineShort : v.timeline;
   const latestQa = v.candidates?.find((c) => v.qa?.[c.id]);
-  const frames = latestQa ? v.qa[latestQa.id].frames.filter((f) => f.format === "main" && f.pct === 0.5) : [];
+  const frames = latestQa ? v.qa[latestQa.id].frames.filter((f) => f.format === (S.specFormat === "short" ? "short" : "main") && f.pct === 0.5) : [];
   const thumb = (id) => frames.find((f) => f.shot === id);
   const selected = new Set(S.selectedShots ?? []);
   body.innerHTML = `
     <div class="panel">
       <div class="row" style="margin-bottom:12px">
-        <div class="grow small muted"><code>specs/${esc(v.slug)}.json</code> · storyboard v${esc(v.specRawVersion ?? 2)} · ${spec.shots?.length ?? 0} shots · ${esc(spec.music?.bpm)} bpm ${esc(spec.music?.key ?? "")} ${esc(spec.music?.mode ?? "")} · world ${esc(spec.world ?? "night")} · ${spec.direction?.status === "directed" ? pill("directed", "ok") : pill("draft: not directed yet", "warn")}
+        ${v.shortSpecJson ? `<select id="specFmt" style="width:auto" title="Each format has its own storyboard"><option value="main" ${S.specFormat !== "short" ? "selected" : ""}>Landscape (16:9)</option><option value="short" ${S.specFormat === "short" ? "selected" : ""}>Short (9:16)</option></select>` : ""}
+        <div class="grow small muted"><code>specs/${esc(v.slug)}${S.specFormat === "short" ? ".short" : ""}.json</code> · storyboard v${esc(v.specRawVersion ?? 2)} · ${spec.shots?.length ?? 0} shots · ${esc(spec.music?.bpm)} bpm ${esc(spec.music?.key ?? "")} ${esc(spec.music?.mode ?? "")} · world ${esc(spec.world ?? "night")} · ${spec.direction?.status === "directed" ? pill("directed", "ok") : pill("draft: not directed yet", "warn")}
           <span id="dirty" class="pill warn" ${S.specDirty ? "" : "hidden"}>unsaved</span></div>
         <button class="ghost sm" id="toggleRaw">${S.specRaw ? "Shot editor" : "Raw JSON"}</button>
         <button class="ghost sm" id="validate">Validate</button>
@@ -599,6 +833,14 @@ function renderStoryboardTab(body) {
       };
     });
   }
+  const fmtSel = $("#specFmt");
+  if (fmtSel) fmtSel.onchange = () => {
+    if (S.specDirty) { fmtSel.value = S.specFormat ?? "main"; return toast("Save or revert your edits first", true); }
+    S.specFormat = fmtSel.value;
+    S.spec = editedSpec(v) ? structuredClone(editedSpec(v)) : null;
+    S.openShot = null;
+    renderStoryboardTab(body);
+  };
   $("#toggleRaw").onclick = () => {
     if (S.specRaw && $("#specErr").textContent) return toast("Fix the JSON error first", true);
     S.specRaw = !S.specRaw;
@@ -606,7 +848,7 @@ function renderStoryboardTab(body) {
   };
   $("#revert").onclick = () => {
     S.specDirty = false;
-    S.spec = structuredClone(S.video.specJson);
+    S.spec = structuredClone(editedSpec(S.video));
     renderStoryboardTab(body);
   };
   $("#validate").onclick = async () => {
@@ -618,7 +860,7 @@ function renderStoryboardTab(body) {
   $("#saveSpec").onclick = async () => {
     if ($("#specErr").textContent.includes("JSON")) return toast("Fix the JSON error first", true);
     try {
-      const r = await api(`/api/videos/${v.slug}/spec`, { method: "PUT", body: S.spec });
+      const r = await api(`/api/videos/${v.slug}/spec${S.specFormat === "short" ? "?format=short" : ""}`, { method: "PUT", body: S.spec });
       toast("Storyboard saved (previous version archived)");
       S.specDirty = false;
       await loadVideo(v.slug, true);
@@ -686,7 +928,7 @@ function renderFactTab(body) {
           <div class="row"><span class="c grow">${esc(c.claim)}</span>${c.shot ? pill(c.shot) : ""}${pill(c.verdict, c.verdict === "ok" ? "ok" : c.verdict === "fix" ? "warn" : "bad")}</div>
           ${c.correction ? `<div class="corr small"><b>Correction:</b> ${esc(c.correction)}</div>` : ""}
           ${c.note ? `<div class="small muted">${esc(c.note)}</div>` : ""}
-          ${c.sources?.length ? `<ul>${c.sources.map((s) => `<li><a href="${esc(s)}" target="_blank" rel="noopener noreferrer">${esc(s)}</a></li>`).join("")}</ul>` : '<div class="small muted">No sources attached</div>'}
+          ${c.sources?.length ? `<ul>${c.sources.map((s) => (typeof s === "string" ? { url: s } : s)).map((s) => `<li><a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">${esc(s.title || s.url)}</a>${s.passage ? `<div class="small muted">${esc(s.passage)}</div>` : ""}</li>`).join("")}</ul>` : '<div class="small muted">No sources attached</div>'}
         </div>`).join("") : `<div class="empty">No flagged claims.</div>`}
     </div>`;
   $("#fcFilter", body).value = filter;
@@ -923,6 +1165,7 @@ function softRefresh() {
       if (!tab) return;
       if (r.tab === "overview") renderOverviewTab(tab);
       else if (r.tab === "factcheck") renderFactTab(tab);
+      else if (r.tab === "research") renderResearchTab(tab);
       else if (r.tab === "assets") renderAssetsTab(tab);
       else if (r.tab === "quality") renderQualityTab(tab);
       else if ((r.tab === "storyboard" || r.tab === "spec") && !S.specDirty && !S.openShot) renderStoryboardTab(tab);
@@ -973,6 +1216,7 @@ function connect() {
     if (S.route.name !== "job") softRefresh();
   };
   es.addEventListener("videos", onVideos);
+  es.addEventListener("settings", () => { if (S.route.name === "settings" && !S.settingsDirty) renderSettings(); });
   es.addEventListener("status", onVideos);
 }
 

@@ -3,7 +3,7 @@
 // shown honestly in the admin panel. Also the candidate/approval history.
 import { paths, readJson, writeJson } from "./files";
 
-export const STAGES = ["script", "factcheck", "direct", "assets", "audio", "render", "qa", "package"] as const;
+export const STAGES = ["research", "outline", "script", "review", "factcheck", "direct", "assets", "audio", "render", "qa", "package"] as const;
 export type Stage = (typeof STAGES)[number];
 
 export type StageRecord = {
@@ -30,6 +30,8 @@ export type Candidate = {
   codeHash: string;
   audio: Record<string, string>;
   qa?: { status: "pass" | "warn" | "fail"; at: string; summary: string };
+  /** Duration settings this candidate was made under, and its measured lengths per cut. */
+  durations?: Partial<Record<"main" | "short", { targetSeconds: number; minSeconds: number; maxSeconds: number; seconds: number; verdict: string; timelineSeconds?: number; soundtrackSeconds?: number | null; probed?: boolean }>>;
   review?: { decision: "approved" | "rejected"; notes: string; at: string };
 };
 
@@ -38,6 +40,8 @@ export type ProductionState = {
   stages: Partial<Record<Stage, StageRecord>>;
   candidates: Candidate[];
   approved?: string | null;
+  /** The settings snapshot of the latest pipeline run (a later settings change doesn't rewrite it). */
+  run?: { at: string; settings: unknown; source: string; formats: string[]; pid: number } | null;
   /** Last stage that completed successfully, for "resume from here". */
   checkpoint?: Stage | null;
   updatedAt?: string;
