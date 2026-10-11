@@ -115,7 +115,7 @@ const FAILURE_CLASS = { "content quality": "bad", "factual verification": "bad",
 const failurePill = (j) => (j?.failure ? pill(`failed: ${j.failure}`, FAILURE_CLASS[j.failure] ?? "bad") : "");
 const FMT_SHORT = { main: "Landscape", short: "Short" };
 const fmtRange = (d) => (d ? `${dur(d.targetSeconds ?? d.target)} (allowed ${dur(d.minSeconds ?? d.min)}–${dur(d.maxSeconds ?? d.max)})` : "");
-const verdictPill = (v) => (v ? pill(v === "ok" ? "in range" : v === "off-target" ? "off target" : v === "short" ? "too short" : v === "long" ? "too long" : v, v === "ok" ? "ok" : v === "off-target" ? "warn" : "bad") : "");
+const verdictPill = (v) => (v ? pill(v === "ok" ? "within target" : v === "off-target" ? "off target" : v === "short" ? "too short" : v === "long" ? "too long" : v, v === "ok" ? "ok" : "bad") : "");
 
 const audioPill = (status) => (status ? pill(AUDIO_TEXT[status] ?? status, status === "full" ? "ok" : status === "partial" ? "warn" : "bad") : pill("No audio", "bad"));
 
@@ -530,7 +530,7 @@ function formatsPanel(v) {
       <td>${x.estimate ? `${dur(x.estimate.seconds)} ${verdictPill(x.estimate.verdict)}<div class="small muted">${x.estimate.spokenWords} spoken + ${x.estimate.sungWords} sung words</div>` : "—"}</td>
       <td>${x.narrationSeconds != null ? dur(x.narrationSeconds) : "—"}</td>
       <td>${x.audioSeconds != null ? `${dur(x.audioSeconds)} ${verdictPill(x.audioVerdict)}` : "—"}</td>
-      <td>${x.finalSeconds != null ? dur(x.finalSeconds) : "—"}</td>
+      <td>${x.finalSeconds != null ? `${dur(x.finalSeconds)} ${verdictPill(x.finalVerdict)}` : "—"}</td>
       <td>${x.review ? `${pill(x.review.pass ? `passed ${x.review.average}` : `failed ${x.review.average}`, x.review.pass ? "ok" : "bad")}${x.review.pass ? "" : `<div class="small err">${esc([...x.review.blocking, ...x.review.reasons].slice(0, 3).join("; "))}</div>`}` : pill("not reviewed")}</td>
     </tr>`;
   };
@@ -654,7 +654,7 @@ async function renderSettings() {
         <h3>Runtime estimation</h3>
         <div class="grid2" style="gap:8px">
           <div class="field"><label for="wpm">Narration delivery rate (words per minute)</label><input id="wpm" type="number" min="60" max="300" step="1" value="${eff.narration.wordsPerMinute}" /><div class="small muted">Used to estimate a script's runtime before audio exists. The audio stage reports the measured rate, so you can calibrate this.</div></div>
-          <div class="field"><label for="tol">Target tolerance (%)</label><input id="tol" type="number" min="1" max="100" step="1" value="${Math.round(eff.narration.targetTolerance * 100)}" /><div class="small muted">Inside the allowed range but further than this from the target is flagged as a warning, not a failure.</div></div>
+          <div class="field"><label for="tol">Target tolerance (%)</label><input id="tol" type="number" min="1" max="100" step="1" value="${Math.round(eff.narration.targetTolerance * 100)}" /><div class="small muted">The acceptance window: the measured audio and the rendered video must land within this share of the target (and inside the allowed range), or the job fails and the script is revised once.</div></div>
         </div>
         <div class="err small" data-err="narration"></div>
       </div>

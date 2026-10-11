@@ -13,7 +13,7 @@ import {
   claimMap, durationSupport, outlineBlockers, PROMPT_VERSIONS, researchBlockers, reviewVerdict, RUBRIC, PASS_RULES, scriptText, USABLE, validateOutline, validateResearch, validateReview,
 } from "../../src/schema/editorial.mjs";
 import type { Outline, Research, ReviewReply, Verdict } from "../../src/schema/editorial.mjs";
-import { checkDuration, fmt, FORMAT_LABEL, formatKey } from "../../src/schema/settings.mjs";
+import { checkDuration, fmt, FORMAT_LABEL, formatKey, isBlocking, wordsToTarget } from "../../src/schema/settings.mjs";
 import type { Settings } from "../../src/schema/settings.mjs";
 import { SECTIONS } from "../../src/schema/storyboard.mjs";
 import type { Shot, VideoSpec } from "../../src/schema/storyboard.mjs";
@@ -219,10 +219,10 @@ export function checkScript(r: ScriptReply, format: Format, research: Research |
   if (!p.length && strictDuration) {
     const est = estimateRuntime(toSpec(r, "x", format), format, settings.narration.wordsPerMinute);
     const c = checkDuration(est.seconds, settings, format);
-    if (c.verdict === "short" || c.verdict === "long") {
+    if (isBlocking(c.verdict)) {
       const d = settings.formats[format];
-      const delta = Math.round(((d.targetSeconds - est.seconds) * settings.narration.wordsPerMinute) / 60);
-      p.push(`estimated runtime ${fmt(est.seconds)} (${est.spokenWords} spoken + ${est.sungWords} sung words at ${settings.narration.wordsPerMinute} wpm, including musical time) is outside the allowed ${fmt(d.minSeconds)}-${fmt(d.maxSeconds)}; aim for ${fmt(d.targetSeconds)}: ${delta > 0 ? `add about ${delta} words of real explanation (mechanism detail, the worked example, a misconception) from the dossier, not repetition` : `cut about ${-delta} words, keeping the mechanism and the example`}`);
+      const delta = wordsToTarget({ seconds: est.seconds, targetSeconds: d.targetSeconds, measuredWpm: settings.narration.wordsPerMinute }, settings.narration.wordsPerMinute);
+      p.push(`estimated runtime ${fmt(est.seconds)} (${est.spokenWords} spoken + ${est.sungWords} sung words at ${settings.narration.wordsPerMinute} wpm, including musical time) misses the ${fmt(d.targetSeconds)} target (${c.message}; allowed ${fmt(d.minSeconds)}-${fmt(d.maxSeconds)}, tolerance ${Math.round(settings.narration.targetTolerance * 100)}%); aim for ${fmt(d.targetSeconds)}: ${delta > 0 ? `add about ${delta} words of real explanation (mechanism detail, the worked example, a misconception) from the dossier, not repetition` : `cut about ${-delta} words, keeping the mechanism and the example`}`);
     }
   }
   return p;

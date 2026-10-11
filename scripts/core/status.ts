@@ -6,7 +6,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { durationSupport, outlineBlockers, researchBlockers } from "../../src/schema/editorial.mjs";
-import { checkDuration, fmt, formatKey } from "../../src/schema/settings.mjs";
+import { checkDuration, fmt, formatKey, isBlocking } from "../../src/schema/settings.mjs";
 import type { Settings } from "../../src/schema/settings.mjs";
 import { lintSpec, validateSpec } from "../../src/schema/storyboard.mjs";
 import { estimateRuntime } from "../../src/schema/timeline.mjs";
@@ -37,6 +37,7 @@ export type FormatSummary = {
   narrationSeconds: number | null;
   audioSeconds: number | null;
   finalSeconds: number | null;
+  finalVerdict: string | null;
   audioVerdict: string | null;
   review: { pass: boolean; average: number; reasons: string[]; blocking: string[] } | null;
   ownScript: boolean;
@@ -121,7 +122,7 @@ export function computeStatus(slug: string, opts: { settings?: Settings; formats
 
   const manifest = loadAudioManifest(slug);
   const audioHash = audioInputHash(specs, settings);
-  const badDur = formats.filter((f) => manifest?.durations?.[f] && ["short", "long"].includes(manifest.durations[f]!.verdict));
+  const badDur = formats.filter((f) => manifest?.durations?.[f] && isBlocking(manifest.durations[f]!.verdict));
   out.audio = !manifest
     ? { status: "missing", reason: "no audio yet" }
     : manifest.inputHash !== audioHash
@@ -154,7 +155,7 @@ export function formatSummaries(slug: string, settings: Settings, formats: Forma
   const manifest = loadAudioManifest(slug);
   const reviews = loadReviews(slug);
   const cand = latestCandidate(slug);
-  const qa = cand ? readJson<{ media?: Record<string, { seconds: number }> } | null>(join(paths.candidate(slug, cand.id), "qa", "report.json"), null) : null;
+  const qa = cand ? readJson<{ media?: Record<string, { seconds: number; range?: { verdict: string } }> } | null>(join(paths.candidate(slug, cand.id), "qa", "report.json"), null) : null;
   const specs = cutSpecs(slug, formats);
   const out: Partial<Record<Format, FormatSummary>> = {};
   for (const f of formats) {
@@ -175,6 +176,7 @@ export function formatSummaries(slug: string, settings: Settings, formats: Forma
       narrationSeconds: md?.narrationSeconds ?? null,
       audioSeconds: md?.seconds ?? (manifest?.formats[f]?.seconds ?? null),
       finalSeconds: qa?.media?.[f]?.seconds ?? null,
+      finalVerdict: qa?.media?.[f]?.range?.verdict ?? null,
       audioVerdict: md?.verdict ?? null,
       review: r ? { pass: r.verdict.pass, average: r.verdict.average, reasons: r.verdict.reasons, blocking: r.blocking.map((b) => b.problem) } : null,
       ownScript: own,

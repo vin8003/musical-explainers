@@ -21,7 +21,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   narration: Object.freeze({
     /** Spoken words per minute used to estimate runtime before audio exists. */
     wordsPerMinute: 156,
-    /** A script estimate further than this share from the target is flagged (it must still be inside min-max). */
+    /** Acceptance window around the target: a script estimate, the measured audio and the rendered file must all be within this share of the target (and inside min-max). */
     targetTolerance: 0.15,
   }),
 });
@@ -105,6 +105,25 @@ export function resolveSettings(raw) {
 export function formatKey(settings, format) {
   const f = settings.formats[format];
   return `${format}:${f.targetSeconds}/${f.minSeconds}-${f.maxSeconds}@${settings.narration.wordsPerMinute}wpm±${settings.narration.targetTolerance}`;
+}
+
+/**
+ * Product rule: the target is an acceptance criterion, not a preference.
+ * min/max are absolute bounds; the tolerance window around the target is what
+ * a finished cut must land in. "short", "long" and "off-target" all block.
+ */
+export const BLOCKING_VERDICTS = ["short", "long", "off-target"];
+export const isBlocking = (verdict) => BLOCKING_VERDICTS.includes(verdict);
+
+/**
+ * Spoken words to add (positive) or cut (negative) to move a measured cut to
+ * its target. Music, sung chorus, transitions and tails stay as they are, so
+ * the whole deficit has to come from narration: words = deficit x the measured
+ * delivery rate (not scaled by the narration share of the video).
+ */
+export function wordsToTarget({ seconds, targetSeconds, measuredWpm }, fallbackWpm) {
+  const wpm = isNum(measuredWpm) && measuredWpm > 0 ? measuredWpm : fallbackWpm;
+  return Math.round(((targetSeconds - seconds) * wpm) / 60);
 }
 
 /** Duration verdict for one format: "ok", "off-target" (inside the range, outside the tolerance), "short" or "long". */

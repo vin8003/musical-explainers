@@ -2,7 +2,7 @@
 // renders each cut with the Remotion CLI into a new candidate directory.
 // Candidates are never overwritten: every render is a new version, so an
 // approved video can't be clobbered. One render at a time across all jobs.
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { hashDir, hashOf, lock, paths, PipelineError, ROOT, stamp, writeJson } from "../core/files";
@@ -76,6 +76,17 @@ export function buildProps(slug: string, settings: Settings) {
   return { specs, props, manifest: audioFresh ? manifest : null, audioFresh };
 }
 
+/** Container duration of a rendered file (ffprobe), rounded to 10 ms; null when it can't be read. */
+export function probeSeconds(file: string): number | null {
+  try {
+    const out = JSON.parse(execFileSync("ffprobe", ["-v", "error", "-show_format", "-of", "json", file], { encoding: "utf8" }));
+    const s = Number(out.format?.duration);
+    return Number.isFinite(s) && s > 0 ? Math.round(s * 100) / 100 : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function renderStage(ctx: RunCtx): Promise<StageResult> {
   const { specs, props, manifest, audioFresh } = buildProps(ctx.slug, ctx.settings);
   if (!audioFresh && !process.env.ALLOW_SILENT_RENDER) {
@@ -116,10 +127,14 @@ export async function renderStage(ctx: RunCtx): Promise<StageResult> {
       audioHash: manifest?.inputHash ?? null,
       codeHash: codeHash(),
       audio: Object.fromEntries(formats.map((f) => [f, props[f]!.audio?.[f]?.status ?? "silent"])),
+      // Verified lengths: the probed MP4 is the record; timeline and soundtrack are kept to show they agree.
       durations: Object.fromEntries(formats.map((f) => {
         const tl = props[f]!.timelines![f]!;
-        const seconds = Math.round((tl.totalFrames / tl.fps) * 100) / 100;
-        return [f, { ...ctx.settings.formats[f], seconds, verdict: checkDuration(seconds, ctx.settings, f).verdict }];
+        const timelineSeconds = Math.round((tl.totalFrames / tl.fps) * 100) / 100;
+        const soundtrackSeconds = manifest?.durations?.[f]?.seconds ?? null;
+        const probed = probeSeconds(join(dir, `${f}.mp4`));
+        const seconds = probed ?? timelineSeconds;
+        return [f, { ...ctx.settings.formats[f], seconds, timelineSeconds, soundtrackSeconds, probed: probed != null, verdict: checkDuration(seconds, ctx.settings, f).verdict }];
       })),
     };
     writeJson(join(dir, "candidate.json"), cand);

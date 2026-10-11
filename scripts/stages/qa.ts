@@ -13,6 +13,8 @@ import { claudeJson } from "../claude";
 import { paths, PipelineError, readJson, ROOT, writeJson } from "../core/files";
 import { updateState } from "../core/state";
 import { checkDuration } from "../../src/schema/settings.mjs";
+import type { Settings } from "../../src/schema/settings.mjs";
+import { loadAudioManifest } from "./audio";
 import { latestCandidate } from "./render";
 import type { RunCtx, StageResult } from "./types";
 
@@ -38,6 +40,21 @@ export type QaReport = {
   frames: { format: string; shot: string; index: number; type: string; pct: number; file: string }[];
   review?: { model: "claude"; inspected: string[]; overall: string; teaches: string; findings: Finding[] } | null;
 };
+
+/**
+ * What the rendered file's length means for acceptance. Short, long and
+ * off-target (outside the tolerance window around the target) all fail: the
+ * target is an acceptance criterion, not a preference. A soundtrack that
+ * disagrees with the file is a renderer failure.
+ */
+export function durationFindings(seconds: number, settings: Settings, format: "main" | "short", soundtrackSeconds?: number | null): { verdict: string; findings: Finding[] } {
+  const dc = checkDuration(seconds, settings, format);
+  const findings: Finding[] = [];
+  if (dc.verdict === "short" || dc.verdict === "long") findings.push({ check: "duration-range", severity: "fail", format, message: `Final video ${dc.message}`, owner: "script" });
+  else if (dc.verdict === "off-target") findings.push({ check: "duration-target", severity: "fail", format, message: `Final video ${dc.message}`, owner: "script" });
+  if (soundtrackSeconds != null && Math.abs(seconds - soundtrackSeconds) > 0.5) findings.push({ check: "duration-soundtrack", severity: "fail", format, message: `Rendered file is ${seconds.toFixed(2)}s but the soundtrack is ${soundtrackSeconds.toFixed(2)}s`, owner: "renderer" });
+  return { verdict: dc.verdict, findings };
+}
 
 const SAMPLE = [0.15, 0.5, 0.9];
 
@@ -208,10 +225,10 @@ export async function qaStage(ctx: RunCtx): Promise<StageResult> {
     if (Math.abs(info.seconds - expected) > 0.25) findings.push({ check: "duration", severity: "fail", format, message: `${info.seconds.toFixed(2)}s, timeline says ${expected.toFixed(2)}s`, owner: "renderer" });
     // The rendered file against the job's configured range (music, chorus, transitions and tails included).
     const range = ctx.settings.formats[format];
-    const dc = checkDuration(info.seconds, ctx.settings, format);
-    media[format].range = { ...range, verdict: dc.verdict };
-    if (dc.verdict === "short" || dc.verdict === "long") findings.push({ check: "duration-range", severity: "fail", format, message: `Final video ${dc.message}`, owner: "script" });
-    else if (dc.verdict === "off-target") findings.push({ check: "duration-target", severity: "warn", format, message: `Final video ${dc.message}`, owner: "script" });
+    const soundtrack = props.audio?.[format] ? loadAudioManifest(ctx.slug)?.durations?.[format]?.seconds : undefined;
+    const dur = durationFindings(info.seconds, ctx.settings, format, soundtrack);
+    media[format].range = { ...range, verdict: dur.verdict };
+    findings.push(...dur.findings);
     if (info.video !== "h264") findings.push({ check: "codec", severity: "warn", format, message: `video codec ${info.video}`, owner: "renderer" });
     if (expectAudio && !info.audio) findings.push({ check: "audio-stream", severity: "fail", format, message: "No audio stream, but the audio stage produced a mix", owner: "renderer" });
     if (!expectAudio) findings.push({ check: "audio-stream", severity: "warn", format, message: "Silent render: no audio was available for this candidate", owner: "audio" });

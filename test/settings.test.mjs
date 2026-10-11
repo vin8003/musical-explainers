@@ -158,3 +158,14 @@ test("admin API: cross-origin settings writes are refused", async () => {
   const r = await fetch(url("/api/settings"), { method: "PUT", headers: { origin: "http://evil.example", "content-type": "application/json" }, body: JSON.stringify(DEFAULT_SETTINGS) });
   assert.equal(r.status, 403);
 });
+
+test("wordsToTarget converts the deficit at the measured delivery rate, not the narration share", async () => {
+  const { wordsToTarget, isBlocking } = await import("../src/schema/settings.mjs");
+  // A 4:00 video with music and chorus filling 60% of it, 60s short of a 5:00 target at a measured 150 wpm: 150 words.
+  assert.equal(wordsToTarget({ seconds: 240, targetSeconds: 300, measuredWpm: 150 }, 156), 150);
+  // Too long: negative, to cut.
+  assert.equal(wordsToTarget({ seconds: 330, targetSeconds: 300, measuredWpm: 150 }, 156), -75);
+  // No measured rate: the configured one.
+  assert.equal(wordsToTarget({ seconds: 240, targetSeconds: 300, measuredWpm: null }, 120), 120);
+  assert.deepEqual(["ok", "off-target", "short", "long", "unknown"].map(isBlocking), [false, true, true, true, false]);
+});

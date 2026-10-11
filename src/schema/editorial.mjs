@@ -116,6 +116,16 @@ export function researchBlockers(r) {
   const cm = claimMap(r);
   const weak = (r?.thesis?.claimIds ?? []).filter((id) => !USABLE.includes(cm.get(id)?.status));
   if (weak.length) b.push(`The central thesis rests on claim(s) that are not supported: ${weak.join(", ")}`);
+  // The thesis is the one thing the whole video leans on: every claim under it needs
+  // evidence that was actually opened, a quoted passage, and (if qualified) its limits.
+  for (const id of r?.thesis?.claimIds ?? []) {
+    const c = cm.get(id);
+    if (!c || !USABLE.includes(c.status)) continue;
+    const opened = (c.sources ?? []).filter((s) => s?.accessed === "fetched" && isStr(s?.passage) && isStr(s?.supports));
+    if (!opened.length) b.push(`Thesis claim "${id}" has no opened source with a quoted passage; snippets and bare links don't count`);
+    if (c.status === "qualified" && !isStr(c.qualification)) b.push(`Thesis claim "${id}" is qualified but states no qualification`);
+    if ((c.importance ?? 0) >= 4 && !opened.some((s) => s.kind === "primary" || s.kind === "authoritative")) b.push(`Thesis claim "${id}" has only secondary sources; the central claim needs a primary or authoritative one`);
+  }
   const usable = (r?.claims ?? []).filter((c) => USABLE.includes(c.status)).length;
   if (usable < 5) b.push(`Only ${usable} usable claim(s): not enough verified material for an explainer`);
   return b;

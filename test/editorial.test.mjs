@@ -120,3 +120,31 @@ test("review replies are validated", () => {
   assert.deepEqual(validateReview(ref), []);
   assert.match(validateReview(ref, ["a"]).join(), /not a shot id/);
 });
+
+test("the central thesis needs opened, quoted, adequately scoped evidence, not just a 'supported' label", () => {
+  // Snippet-only source under a qualified thesis claim: the dossier validates, but it can't carry the video.
+  const snippet = dossier();
+  snippet.claims[0].status = "qualified";
+  snippet.claims[0].qualification = "only in TCP";
+  snippet.claims[0].sources = [src(1, "search-result")];
+  assert.deepEqual(validateResearch(snippet), []);
+  assert.match(researchBlockers(snippet).join(), /Thesis claim "c1" has no opened source/);
+
+  // An over-generalised claim (qualified with no stated limits) is invalid outright.
+  const broad = dossier();
+  broad.claims[1].status = "qualified";
+  assert.ok(validateResearch(broad).some((p) => /needs its qualification/.test(p)));
+
+  // An empty passage means no source text backs the wording.
+  const hollow = dossier();
+  hollow.claims[0].sources = [{ ...src(1), passage: " " }];
+  assert.match(researchBlockers(hollow).join(), /Thesis claim "c1" has no opened source/);
+
+  // A high-importance thesis claim resting only on secondary sources is not enough.
+  const secondary = dossier();
+  secondary.claims[0].importance = 5;
+  secondary.claims[0].sources = [{ ...src(1), kind: "secondary" }];
+  assert.match(researchBlockers(secondary).join(), /only secondary sources/);
+
+  assert.deepEqual(researchBlockers(dossier()), []);
+});

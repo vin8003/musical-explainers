@@ -5,7 +5,7 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { checkDuration, fmt, FORMAT_LABEL, formatKey } from "../../src/schema/settings.mjs";
+import { checkDuration, fmt, FORMAT_LABEL, formatKey, isBlocking } from "../../src/schema/settings.mjs";
 import type { Settings } from "../../src/schema/settings.mjs";
 import { buildTimeline, shotsFor, wordCount } from "../../src/schema/timeline.mjs";
 import type { Format, Timeline } from "../../src/schema/timeline.mjs";
@@ -52,7 +52,7 @@ export type DurationReport = {
   estimatedSeconds?: number;
 };
 
-/** Measured media outside the configured range, per cut. */
+/** Measured media outside the configured range or target tolerance, per cut. */
 export class DurationError extends PipelineError {
   constructor(message: string, public failing: { format: Format; report: DurationReport }[]) {
     super(message, "duration", "Revise the script for that format (the pipeline does one targeted revision automatically), or change the duration range in Settings > Video formats.");
@@ -286,7 +286,6 @@ export async function audioStage(ctx: RunCtx): Promise<StageResult> {
       verdict: check.verdict, message: check.message,
       estimatedSeconds: spec.editorial?.estimate?.seconds,
     };
-    if (check.verdict === "off-target") warnings.push(`${FORMAT_LABEL[format]}: ${check.message}`);
   }
 
   const manifest: AudioManifest = {
@@ -306,13 +305,13 @@ export async function audioStage(ctx: RunCtx): Promise<StageResult> {
 }
 
 /**
- * Measured length outside the configured range is a failure, reported per
+ * Measured length outside the configured range or the target tolerance is a failure, reported per
  * cut. Nothing is sped up, trimmed or padded to pass: the fix is a script or
  * arrangement revision (or a deliberate settings change).
  * ALLOW_DURATION_MISMATCH=1 lets an old, short video render as a preview.
  */
 export function durationGate(m: AudioManifest, formats: Format[]) {
-  const failing = formats.flatMap((f) => (m.durations?.[f] && (m.durations[f]!.verdict === "short" || m.durations[f]!.verdict === "long") ? [{ format: f, report: m.durations[f]! }] : []));
+  const failing = formats.flatMap((f) => (m.durations?.[f] && isBlocking(m.durations[f]!.verdict) ? [{ format: f, report: m.durations[f]! }] : []));
   if (!failing.length || process.env.ALLOW_DURATION_MISMATCH === "1") return;
   throw new DurationError(failing.map((x) => `${FORMAT_LABEL[x.format]} measured ${fmt(x.report.seconds)} (narration ${fmt(x.report.narrationSeconds)}): ${x.report.message}`).join("; "), failing);
 }

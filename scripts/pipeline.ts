@@ -22,7 +22,7 @@
 // once at start; the admin passes its job snapshot in PIPELINE_SETTINGS.
 import { readFileSync } from "node:fs";
 import { lock, paths, PipelineError, readJson } from "./core/files";
-import { fmt, FORMAT_LABEL } from "../src/schema/settings.mjs";
+import { fmt, FORMAT_LABEL, wordsToTarget } from "../src/schema/settings.mjs";
 import { runSettings } from "./core/settings";
 import { emit, setStage, Stage, STAGES, updateState } from "./core/state";
 import { computeStatus } from "./core/status";
@@ -159,6 +159,10 @@ async function main() {
     if (single) {
       currentStage = single;
       await runStage(single, { ...ctx, force: ctx.force || true });
+      if (single === "qa") {
+        const after = computeStatus(slug, { settings: ctx.settings, formats: ctx.formats, title, topic }).stages.qa;
+        if (after.status === "failed") throw new PipelineError(`QA failed: ${after.reason}`, "quality", "Open the Quality tab to see what failed.");
+      }
       return;
     }
     // Continue mode: run what's missing or stale, in order; rescan after each
@@ -195,8 +199,8 @@ async function main() {
         durationRoundsLeft--;
         const revise: RunCtx["revise"] = {};
         for (const { format, report } of e.failing) {
-          const words = Math.round(((report.targetSeconds - report.seconds) * (report.measuredWpm ?? ctx.settings.narration.wordsPerMinute)) / 60 * report.narrationShare);
-          revise[format] = `The produced audio measured ${fmt(report.seconds)} (narration ${fmt(report.narrationSeconds)}, ${report.spokenWords} spoken words at a measured ${report.measuredWpm ?? "?"} wpm); the ${FORMAT_LABEL[format]} must be ${fmt(report.minSeconds)}-${fmt(report.maxSeconds)}, target ${fmt(report.targetSeconds)}. ${words > 0 ? `Add roughly ${words} spoken words of real explanation from the outline and dossier (deepen the mechanism and the worked example); do not repeat or pad.` : `Cut roughly ${-words} spoken words (or chorus repeats) while keeping the mechanism and the example.`} Keep everything else that works.`;
+          const words = wordsToTarget(report, ctx.settings.narration.wordsPerMinute);
+          revise[format] = `The produced audio measured ${fmt(report.seconds)} (narration ${fmt(report.narrationSeconds)}, ${report.spokenWords} spoken words at a measured ${report.measuredWpm ?? "?"} wpm); the ${FORMAT_LABEL[format]} must land near the ${fmt(report.targetSeconds)} target (within ${Math.round(ctx.settings.narration.targetTolerance * 100)}%, never outside ${fmt(report.minSeconds)}-${fmt(report.maxSeconds)}). ${words > 0 ? `Add roughly ${words} spoken words of real explanation from the outline and dossier (deepen the mechanism and the worked example); do not repeat or pad.` : `Cut roughly ${-words} spoken words (or chorus repeats) while keeping the mechanism and the example.`} Keep everything else that works.`;
         }
         console.log(`\n[pipeline] ${e.message}\n[pipeline] targeted script revision for ${Object.keys(revise).join(", ")} (duration round ${durationRounds - durationRoundsLeft}/${durationRounds})`);
         currentStage = "script";

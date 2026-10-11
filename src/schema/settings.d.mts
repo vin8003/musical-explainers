@@ -19,3 +19,6 @@ export declare function resolveSettings(raw: unknown): { settings: Settings; sou
 export declare function formatKey(settings: Settings, format: Format): string;
 export declare function checkDuration(seconds: number | null | undefined, settings: Settings, format: Format): DurationCheck;
 export declare function fmt(seconds: number): string;
+export declare const BLOCKING_VERDICTS: string[];
+export declare function isBlocking(verdict: string | null | undefined): boolean;
+export declare function wordsToTarget(m: { seconds: number; targetSeconds: number; measuredWpm?: number | null }, fallbackWpm: number): number;

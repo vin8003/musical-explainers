@@ -18,6 +18,9 @@ export async function packageStage(ctx: RunCtx): Promise<StageResult> {
   const spec = loadSpec(ctx.slug);
   const cand = latestCandidate(ctx.slug);
   if (!spec || !cand) throw new PipelineError("Render a candidate first", "missing");
+  const qa = readJson<{ status?: string; summary?: string } | null>(join(paths.candidate(ctx.slug, cand.id), "qa", "report.json"), null);
+  if (!qa) throw new PipelineError("The latest candidate has not passed QA yet", "quality", "Run the qa stage first.");
+  if (qa.status === "fail") throw new PipelineError(`Not packaging a candidate that failed QA: ${qa.summary}`, "quality", "Fix the flagged problems and re-render.");
   const dir = join(paths.candidate(ctx.slug, cand.id), "package");
   const dir0 = paths.candidate(ctx.slug, cand.id);
   const props = existsSync(join(dir0, "props-main.json")) ? join(dir0, "props-main.json") : join(dir0, "props.json");

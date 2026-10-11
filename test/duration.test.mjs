@@ -19,9 +19,37 @@ const gate = (durations, env) => tsx(`
   catch (e) { console.log(JSON.stringify({ ok: false, duration: e instanceof DurationError, kind: (e as any).kind, message: (e as Error).message, failing: (e as any).failing?.map((f: any) => f.format) })); }
 `, env);
 
-test("measured audio inside the range passes the gate; off-target is only a warning", () => {
+test("measured audio within the target tolerance passes the gate; off-target blocks like short and long", () => {
   assert.equal(gate({ main: report(430, "ok"), short: report(44, "ok") }).ok, true);
-  assert.equal(gate({ main: report(330, "off-target") }).ok, true);
+  const r = gate({ main: report(310, "off-target"), short: report(44, "ok") });
+  assert.equal(r.ok, false);
+  assert.equal(r.duration, true);
+  assert.deepEqual(r.failing, ["main"]);
+  assert.equal(gate({ main: report(310, "off-target") }, { ALLOW_DURATION_MISMATCH: "1" }).ok, true);
+});
+
+test("the issue's example: 5:10 against a 7:00 target is inside min-max but is not accepted", () => {
+  const r = tsx(`
+    import { durationFindings } from "./scripts/stages/qa";
+    import { DEFAULT_SETTINGS } from "./src/schema/settings.mjs";
+    const s = { ...DEFAULT_SETTINGS, formats: { ...DEFAULT_SETTINGS.formats, main: { targetSeconds: 420, minSeconds: 300, maxSeconds: 600 } } };
+    console.log(JSON.stringify({ off: durationFindings(310, s as any, "main"), ok: durationFindings(425, s as any, "main", 425.2), mismatch: durationFindings(425, s as any, "main", 400) }));
+  `);
+  assert.equal(r.off.verdict, "off-target");
+  assert.deepEqual(r.off.findings.map((f) => [f.check, f.severity]), [["duration-target", "fail"]]);
+  assert.deepEqual(r.ok.findings, []);
+  assert.deepEqual(r.mismatch.findings.map((f) => f.check), ["duration-soundtrack"]);
+});
+
+test("a failed QA report blocks packaging and shows as a failed stage; the candidate records the probed MP4 length", () => {
+  const r = spawnSync(process.execPath, ["node_modules/tsx/dist/cli.mjs", "test/fixtures/qa-blocks-package.ts"], { encoding: "utf8" });
+  assert.equal(r.status, 0, r.stderr);
+  const out = JSON.parse(r.stdout.trim().split("\n").pop());
+  assert.equal(out.qaStage, "failed");
+  assert.match(out.packageError, /Not packaging a candidate that failed QA/);
+  assert.equal(out.noReportError, "The latest candidate has not passed QA yet");
+  assert.ok(Math.abs(out.probed - 2.5) < 0.1, `probed ${out.probed}`);
+  assert.equal(out.probeMissing, null);
 });
 
 test("measured audio too short or too long fails with a duration error naming the cut", () => {

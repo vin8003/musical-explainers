@@ -31,7 +31,7 @@ export type Candidate = {
   audio: Record<string, string>;
   qa?: { status: "pass" | "warn" | "fail"; at: string; summary: string };
   /** Duration settings this candidate was made under, and its measured lengths per cut. */
-  durations?: Partial<Record<"main" | "short", { targetSeconds: number; minSeconds: number; maxSeconds: number; seconds: number; verdict: string }>>;
+  durations?: Partial<Record<"main" | "short", { targetSeconds: number; minSeconds: number; maxSeconds: number; seconds: number; verdict: string; timelineSeconds?: number; soundtrackSeconds?: number | null; probed?: boolean }>>;
   review?: { decision: "approved" | "rejected"; notes: string; at: string };
 };
 
