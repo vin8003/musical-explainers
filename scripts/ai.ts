@@ -1,5 +1,5 @@
-// Runs the Claude Code CLI headlessly (`claude -p`) on the local machine.
-// Uses the logged-in Claude Code subscription: no API key involved.
+// Shared provider request, validation and bounded repair runtime. Claude uses its local CLI;
+// ChatGPT uses Sign in with ChatGPT subscription-backed inference.
 // Bounded: a timeout per call, at most one retry on transient errors, and no
 // retry at all when the subscription's usage limit is hit.
 import { spawn } from "node:child_process";
@@ -9,12 +9,15 @@ import { applyPatch, extractPatch, fieldRepairPrompt, localRepairJson, planField
 import { amendCall, finishCall, getUsageContext, reserveCall } from "./core/usage";
 import type { Reservation, UsageRecord } from "./core/usage";
 import { normalizeCliUsage, unknownUsage } from "../src/schema/usage.mjs";
+import type { Usage } from "../src/schema/usage.mjs";
 import { MAX_REPAIR_ATTEMPTS_HARD } from "../src/schema/settings.mjs";
 import { randomUUID } from "node:crypto";
 import { isAllowedModel, EFFORT_LEVELS } from "../src/schema/settings.mjs";
 import type { ModelChoice, ModelStepId } from "../src/schema/settings.mjs";
+import { chatGPTResponse, listChatGPTModels } from "./providers/chatgpt.mjs";
+import { markChatGPTReauthenticationRequired } from "./providers/chatgpt-auth.mjs";
 
-export type ClaudeOptions = {
+export type ProviderOptions = {
   /** e.g. ["WebSearch", "WebFetch"] for the fact-check stage, ["Read"] for visual review. */
   allowedTools?: string[];
   /** Which pipeline step this call is; picks its model and effort from the job's settings. */
@@ -29,10 +32,12 @@ export type ClaudeOptions = {
   callKind?: "generation" | "regeneration";
   /** Why, when a call deliberately repeats a large prompt (e.g. "length miss"). Recorded in the ledger. */
   reason?: string;
+  /** Images are only encoded and sent by providers/models that support vision. */
+  imagePaths?: string[];
 };
 
-/** Extra options for claudeJson. */
-export type JsonOptions<T> = ClaudeOptions & {
+/** Extra options for aiJson. */
+export type JsonOptions<T> = ProviderOptions & {
   /** Problems with the parsed value (empty = valid). Always re-run on the whole object after a repair. */
   check?: (v: T) => string[];
   /**
@@ -71,10 +76,18 @@ let snapshot: ReturnType<typeof runSettings> | undefined;
  *   4. the step's row in the job's settings (admin: Settings > Models)
  * Never the CLI's own default. Opus is refused wherever it comes from.
  */
-export function resolveModel(opts: Pick<ClaudeOptions, "step" | "model" | "effort">, env = process.env): ModelChoice {
+export function resolveModel(opts: Pick<ProviderOptions, "step" | "model" | "effort">, env = process.env): ModelChoice {
   const key = opts.step?.replace(/[A-Z]/g, (c) => `_${c}`).toUpperCase();
   let fromSettings: ModelChoice | undefined;
-  if (opts.step) fromSettings = (snapshot ??= runSettings(env)).settings.models[opts.step];
+  const settings = (snapshot ??= runSettings(env)).settings;
+  if (settings.provider === "chatgpt") {
+    if (opts.step) fromSettings = settings.providers.chatgpt.models[opts.step];
+    const model = opts.model || fromSettings?.model;
+    const effort = opts.effort || fromSettings?.effort || "medium";
+    if (!model) throw new PipelineError(`Choose a ChatGPT plan model for ${opts.step ?? "this call"} in Settings.`, "config");
+    return { model, effort: effort as ModelChoice["effort"] };
+  }
+  if (opts.step) fromSettings = settings.providers.claude.models[opts.step];
   const model = opts.model || (key && env[`CLAUDE_MODEL_${key}`]) || env.CLAUDE_MODEL || fromSettings?.model || "sonnet";
   const effort = opts.effort || (key && env[`CLAUDE_EFFORT_${key}`]) || env.CLAUDE_EFFORT || fromSettings?.effort || "medium";
   if (!isAllowedModel(model)) throw new PipelineError(`Model "${model}" is not allowed for ${opts.step ?? "this call"}: use sonnet or haiku (Opus is not used in this project).`, "config");
@@ -85,7 +98,7 @@ export function resolveModel(opts: Pick<ClaudeOptions, "step" | "model" | "effor
 type RunResult = { ok: boolean; text?: string; envelope: unknown; exitCode: number | null; error?: { category: string; message: string } };
 
 /** Runs the CLI once. Never rejects for CLI failures: the caller records the call (and any usage the CLI reported) first. */
-function runOnce(prompt: string, opts: ClaudeOptions, model: string, effort: string): Promise<RunResult> {
+function runOnce(prompt: string, opts: ProviderOptions, model: string, effort: string): Promise<RunResult> {
   const args = ["-p", "--output-format", "json", "--model", model, "--effort", effort];
   console.log(`  [${opts.step ?? opts.label ?? "claude"}: ${model}, ${effort} effort]`);
   if (opts.allowedTools?.length) args.push("--allowedTools", opts.allowedTools.join(","));
@@ -122,36 +135,61 @@ function runOnce(prompt: string, opts: ClaudeOptions, model: string, effort: str
 type Meta = { operationId: string; attempt: number; kind: string; repair: boolean; reason?: string };
 type Called = { text: string; row: UsageRecord };
 
-/** One budgeted, recorded Claude call. Throws BudgetExceededError before launching if a limit is reached. */
-async function invoke(prompt: string, opts: ClaudeOptions, meta: Meta): Promise<Called> {
+/** One budgeted, recorded selected-provider call. Throws before launch if a limit is reached. */
+async function invoke(prompt: string, opts: ProviderOptions, meta: Meta): Promise<Called> {
   const { model, effort } = resolveModel(opts);
-  const res: Reservation = reserveCall({ operation: opts.label ?? opts.step ?? "claude", operationId: meta.operationId, step: opts.step, requestedModel: model, effort, attempt: meta.attempt, repair: meta.repair, kind: meta.kind, reason: meta.reason });
-  const r = await runOnce(prompt, opts, model, effort);
-  const usage = r.envelope ? normalizeCliUsage(r.envelope) : unknownUsage();
-  const row = finishCall(res, { status: r.ok ? "ok" : "failed", usage, model: usage.modelUsed, exitCode: r.exitCode, error: r.error ? { category: r.error.category, message: r.error.message.slice(0, 200) } : null });
+  const settings = (snapshot ??= runSettings()).settings;
+  const provider = settings.provider;
+  let reportedEffort: string | null = provider === "claude" ? effort : null;
+  const res: Reservation = reserveCall({ provider, operation: opts.label ?? opts.step ?? provider, operationId: meta.operationId, step: opts.step, requestedModel: model, effort: reportedEffort, attempt: meta.attempt, repair: meta.repair, kind: meta.kind, reason: meta.reason });
+  let r: RunResult;
+  let providerUsage: unknown = null;
+  if (provider === "claude") {
+    r = await runOnce(prompt, opts, model, effort);
+    providerUsage = r.envelope;
+  } else {
+    try {
+      const available = await listChatGPTModels();
+      const modelInfo = available.find((m) => m.id === model);
+      if (!modelInfo) throw Object.assign(new Error(`Model ${model} is not available for the connected ChatGPT plan. Refresh the model list in Settings.`), { category: "unsupported-model" });
+      const providerOptions = { ...opts, effort: modelInfo.reasoningEfforts?.includes(effort) ? effort : undefined };
+      reportedEffort = providerOptions.effort ?? null;
+      const response = await chatGPTResponse(prompt, providerOptions, model);
+      providerUsage = response.usage;
+      r = { ok: true, text: response.text, envelope: null, exitCode: 0 };
+    } catch (e) {
+      const err = e as Error & { category?: string; usage?: unknown };
+      if (err.category === "auth-expired") await markChatGPTReauthenticationRequired();
+      providerUsage = err.usage ?? null;
+      r = { ok: false, envelope: null, exitCode: null, error: { category: err.category ?? "provider", message: err.message } };
+    }
+  }
+  const usage = provider === "claude" ? (r.envelope ? normalizeCliUsage(r.envelope) : unknownUsage()) : normalizeResponsesUsage(providerUsage);
+  const row = finishCall(res, { status: r.ok ? "ok" : "failed", usage, model: provider === "claude" ? usage.modelUsed : model, effort: reportedEffort, exitCode: r.exitCode, error: r.error ? { category: r.error.category, message: r.error.message.slice(0, 200) } : null });
   if (!r.ok) {
     const c = r.error!.category;
-    throw new PipelineError(r.error!.message, c === "usage-limit" ? "busy" : c === "missing" ? "missing" : "external");
+    throw new PipelineError(r.error!.message, c === "usage-limit" ? "busy" : c === "missing" ? "missing" : c === "unsupported-model" || c === "auth-expired" ? "config" : "external");
   }
   return { text: r.text!, row };
 }
 
 /** invoke + at most one retry of a transient CLI failure (the retry is its own ledger row). */
-async function invokeWithRetry(prompt: string, opts: ClaudeOptions, meta: Meta): Promise<Called> {
+async function invokeWithRetry(prompt: string, opts: ProviderOptions, meta: Meta): Promise<Called> {
   try {
     return await invoke(prompt, opts, meta);
   } catch (e) {
     if (!(e instanceof PipelineError) || e.kind !== "external") throw e;
-    console.log(`  claude call${opts.label ? ` (${opts.label})` : ""} failed: ${e.message.split("\n")[0].slice(0, 200)}; retrying once`);
-    return invoke(prompt, opts, { ...meta, kind: "retry", attempt: meta.attempt + 1, reason: "transient CLI failure; no output to repair, so the same prompt is resent once" });
+    console.log(`  ${((snapshot ??= runSettings()).settings.provider)} call${opts.label ? ` (${opts.label})` : ""} failed: ${e.message.split("\n")[0].slice(0, 200)}; retrying once`);
+    return invoke(prompt, opts, { ...meta, kind: "retry", attempt: meta.attempt + 1, reason: "transient provider failure; no output to repair, so the same prompt is resent once" });
   }
 }
 
-const baseMeta = (opts: ClaudeOptions): Meta => ({ operationId: randomUUID().slice(0, 8), attempt: 0, kind: opts.callKind ?? "generation", repair: false, reason: opts.reason });
+const baseMeta = (opts: ProviderOptions): Meta => ({ operationId: randomUUID().slice(0, 8), attempt: 0, kind: opts.callKind ?? "generation", repair: false, reason: opts.reason });
 
-export async function claudeText(prompt: string, opts: ClaudeOptions = {}): Promise<string> {
+export async function aiText(prompt: string, opts: ProviderOptions = {}): Promise<string> {
   return (await invokeWithRetry(prompt, opts, baseMeta(opts))).text;
 }
+
 
 /** Extracts the outermost JSON object from a reply. */
 export function parseJsonReply<T>(text: string): T {
@@ -166,18 +204,18 @@ const maxRepairs = () => {
   const n = getUsageContext().budgets?.repair?.maxAttemptsPerOperation;
   return Math.min(MAX_REPAIR_ATTEMPTS_HARD, typeof n === "number" ? n : MAX_REPAIR_ATTEMPTS_HARD);
 };
-const repairOpts = (opts: ClaudeOptions, keepTools: boolean): ClaudeOptions => ({ ...opts, step: "repair", model: undefined, effort: undefined, allowedTools: keepTools ? opts.allowedTools : undefined, callKind: undefined });
+const repairOpts = (opts: ProviderOptions, keepTools: boolean): ProviderOptions => ({ ...opts, step: "repair", model: undefined, effort: undefined, allowedTools: keepTools ? opts.allowedTools : undefined, callKind: undefined });
 const short = (ps: string[]) => ps.slice(0, 8).join("; ");
 
 /**
- * Runs claude and parses a JSON object, validating it with `check`.
+ * Runs the selected provider and parses a JSON object, validating it with `check`.
  * A defect is repaired as cheaply as is safe, at most `budgets.repair.maxAttemptsPerOperation`
  * times (hard cap 3): a local formatting fix (free), then a field-level repair
  * that returns only the failing fields (merged, then the WHOLE object is
  * re-validated), else a bounded full-object repair. Invalid output is never
  * accepted; every call (failed and repair included) is in the usage ledger.
  */
-export async function claudeJson<T>(prompt: string, opts: JsonOptions<T> = {}): Promise<T> {
+export async function aiJson<T>(prompt: string, opts: JsonOptions<T> = {}): Promise<T> {
   const meta = baseMeta(opts);
   const limit = maxRepairs();
   let repairs = 0;
@@ -193,11 +231,11 @@ export async function claudeJson<T>(prompt: string, opts: JsonOptions<T> = {}): 
       } catch {
         const local = localRepairJson(text);
         if (local) {
-          console.log(`  repaired the reply's formatting locally (${local.fixes.join(", ")}); no extra Claude call`);
+          console.log(`  repaired the reply's formatting locally (${local.fixes.join(", ")}); no extra provider call`);
           value = local.value as T;
         } else {
           row = amendCall(row, { status: "failed", error: { category: "json-parse", message: "reply was not valid JSON" } });
-          if (repairs >= limit) throw new PipelineError(`Claude did not return valid JSON: ${text.slice(0, 300)}`, "external");
+          if (repairs >= limit) throw new PipelineError(`The selected provider did not return valid JSON: ${text.slice(0, 300)}`, "external");
           repairs++;
           ({ text, row } = await invoke(`Your previous reply was not valid JSON. Reformat it as a single valid JSON object without changing its content. Reply with ONLY the JSON object.\n\n${text}`, repairOpts(opts, false), { ...meta, attempt: repairs, kind: "repair-json", repair: true, reason: "reply was not parseable as JSON and could not be fixed locally" }));
           continue;
@@ -209,9 +247,9 @@ export async function claudeJson<T>(prompt: string, opts: JsonOptions<T> = {}): 
     if (!problems.length) return value as T;
     if (!settled) row = amendCall(row, { status: "failed", error: { category: "validation", message: `${problems.length} problem(s): ${short(problems)}`.slice(0, 300) } });
     settled = false;
-    if (repairs >= limit) throw new PipelineError(`Claude's output is still invalid after ${repairs} repair attempt${repairs === 1 ? "" : "s"}: ${problems.slice(0, 8).join("; ")}`, "invalid");
+    if (repairs >= limit) throw new PipelineError(`The selected provider's output is still invalid after ${repairs} repair attempt${repairs === 1 ? "" : "s"}: ${problems.slice(0, 8).join("; ")}`, "invalid");
     repairs++;
-    console.log(`  ${problems.length} validation problem(s) in Claude's reply; repairing (attempt ${repairs}/${limit})`);
+    console.log(`  ${problems.length} validation problem(s) in provider reply; repairing (attempt ${repairs}/${limit})`);
     const current = value as T;
     const fr = opts.fieldRepair;
     const plan = fr && fieldMode === "none" ? planFieldRepair(current, problems) : ({ safe: false, reason: !fr ? "this output's fields are not independent (field repair not enabled for it)" : "field repair already tried" } as const);
@@ -233,7 +271,7 @@ export async function claudeJson<T>(prompt: string, opts: JsonOptions<T> = {}): 
       const after = opts.check?.(value) ?? [];
       if (!after.length) return value;
       row = amendCall(row, { status: "failed", error: { category: "validation", message: `repair left ${after.length} problem(s): ${short(after)}`.slice(0, 300) } });
-      if (repairs >= limit) throw new PipelineError(`Claude's output is still invalid after ${repairs} repair attempt${repairs === 1 ? "" : "s"}: ${after.slice(0, 8).join("; ")}`, "invalid");
+      if (repairs >= limit) throw new PipelineError(`The selected provider's output is still invalid after ${repairs} repair attempt${repairs === 1 ? "" : "s"}: ${after.slice(0, 8).join("; ")}`, "invalid");
       continue;
     }
     // Full-object repair, with the reason on record.
@@ -244,4 +282,12 @@ export async function claudeJson<T>(prompt: string, opts: JsonOptions<T> = {}): 
     text = called.text;
     value = undefined;
   }
+}
+
+
+function normalizeResponsesUsage(u: any): Usage {
+  const count = (v: unknown) => typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null;
+  const inputTokens = count(u?.input_tokens), outputTokens = count(u?.output_tokens);
+  const status: Usage["status"] = inputTokens === null && outputTokens === null ? "unknown" : inputTokens !== null && outputTokens !== null ? "known" : "partial";
+  return { status, inputTokens, outputTokens, cacheReadTokens: null, cacheCreationTokens: null, totalInputTokens: inputTokens, cost: null, modelUsed: null, native: u && typeof u === "object" ? { provider: "chatgpt-plan", usage: u } : {} };
 }

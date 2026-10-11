@@ -4,16 +4,16 @@ Everything for one video lives under a slug, e.g. `how-does-the-internet-work`. 
 
 ```
 topics/backlog.json                config/settings.json (durations, admin: Settings)
-   │ 1. research   claude -p + web   -> research dossier + specs/<slug>.evidence.json: normalized claims, sources and provenance
-   │ 2. outline    claude -p         -> specs/<slug>.outline.json    per format: stable beat ids, evidence refs and planned lengths
-   │ 3. script     claude -p         -> specs/<slug>.json + .short.json: segments linked to outline beats and evidence claims
-   │ 4. review     claude -p         -> specs/<slug>.review.json     per format: ranked, segment/field findings and pass/fail
-   │ 5. factcheck  claude -p + web   -> specs/<slug>.sources.json    claim-level verdicts with sources (targeted revision, max 2 rounds)
-   │ 6. direct     claude -p         -> both storyboards (sees the outline and the research claims)
+   │ 1. research   selected AI + web   -> research dossier + specs/<slug>.evidence.json: normalized claims, sources and provenance
+   │ 2. outline    selected AI         -> specs/<slug>.outline.json    per format: stable beat ids, evidence refs and planned lengths
+   │ 3. script     selected AI         -> specs/<slug>.json + .short.json: segments linked to outline beats and evidence claims
+   │ 4. review     selected AI         -> specs/<slug>.review.json     per format: ranked, segment/field findings and pass/fail
+   │ 5. factcheck  selected AI + web   -> specs/<slug>.sources.json    claim-level verdicts with sources (targeted revision, max 2 rounds)
+   │ 6. direct     selected AI         -> both storyboards (sees the outline and the research claims)
    │ 7. assets     local             -> out/<slug>/assets.json (+ optional Blender clips)
    │ 8. audio      say + composer    -> out/<slug>/audio/ + public/generated/<slug>/mix-*.wav; measured lengths vs. the duration range
    │ 9. render     Remotion          -> out/<slug>/candidates/<id>/{main,short}.mp4 + props-main.json, props-short.json
-   │10. qa          ffmpeg (+ claude) -> out/<slug>/candidates/<id>/qa/ (includes the final length vs. the range)
+   │10. qa          ffmpeg (+ selected AI) -> out/<slug>/candidates/<id>/qa/ (includes the final length vs. the range)
    │11. package    Remotion still    -> out/<slug>/candidates/<id>/package/ (thumbnail, metadata, sources)
    ▼
 [approval in the admin panel]        -> out/<slug>/state.json (approved candidate) + topics/backlog.json
@@ -34,7 +34,7 @@ Research informs writing; the script is never written first and researched after
 
 Settings live in `config/settings.json` (admin panel: **Settings**, per format target / minimum / maximum in minutes and seconds, reset to defaults, plus the narration rate used for estimates and the target tolerance). Defaults: landscape 7:00 (5:00–10:00), Short 0:45 (0:30–1:00), 156 words per minute, ±15 %. They are defaults, not limits. Saves are validated on the client and the server (positive, finite, min ≤ target ≤ max); invalid input is rejected with the reason and never clamped. A missing, partial or malformed file falls back to the defaults and says so.
 
-**Models and effort.** Every Claude call is a named step (`research`, `outline`, `script`, `scriptFix`, `review`, `factcheck`, `revise`, `direct`, `visualReview`) with its own model and reasoning effort, set in **Settings > Models and effort** (`models` in `config/settings.json`) and snapshotted per job. Opus is refused everywhere; choose `sonnet` or `haiku`. Precedence per call: `CLAUDE_MODEL_<STEP>` / `CLAUDE_EFFORT_<STEP>` (e.g. `CLAUDE_MODEL_DIRECT=haiku`) > `CLAUDE_MODEL` / `CLAUDE_EFFORT` > the saved setting > the default. Defaults put effort where people judge the output (research, script, review: high; outline, fact check, visual review: medium) and save where code validates and retries (shot direction, fact revision: low; length fix: medium). Each call logs `[step: model, effort]`. A model/effort change invalidates only artifacts made by the affected step and their downstream dependents.
+**Provider, models and effort.** Choose Claude or ChatGPT in **Settings**. Each provider keeps independent per-step model settings under `providers.claude.models` and `providers.chatgpt.models` in `config/settings.json`; the selected provider is snapshotted for the entire job. Claude retains its named steps (`research`, `outline`, `script`, `scriptFix`, `review`, `factcheck`, `revise`, `direct`, `visualReview`), its Sonnet/Haiku validation, and `CLAUDE_MODEL_<STEP>` / `CLAUDE_EFFORT_<STEP>` overrides over global Claude overrides and saved settings. ChatGPT models come from the connected account's subscription-backed model catalog; only capabilities advertised for the selected model are sent. ChatGPT never receives Claude CLI arguments or Claude environment overrides. A provider or model/effort change invalidates dependent artifacts. Legacy flat `models` settings migrate to `providers.claude.models`.
 
 A job resolves the settings once when it starts and records them in `out/<slug>/state.json` (`run`); the admin passes the snapshot in `PIPELINE_SETTINGS`, so changing settings mid-run only affects later jobs. The snapshot flows through: outline and script prompts and validation, the runtime estimate (`estimateRuntime` in `src/schema/timeline.mjs`: narration at the configured rate plus lead/tail, whole bars, sung chorus words and `minBars`), the editorial review, the audio stage (ffprobe of the final mix against the range; `measuredWpm` is recorded for calibrating the rate), render candidates (`durations`), and QA (ffprobe of the rendered file against the range). **Target semantics:** min/max are absolute bounds and the target tolerance (Settings) is the acceptance window around the target. A cut whose estimate, measured audio or rendered file is *short*, *long* or *off-target* (outside the window) fails: the script check retries once, the audio gate triggers the targeted revision below, and QA fails the candidate (so it can never be packaged). Corrections are sized from the measured speaking rate: `words = (target - measured seconds) x measuredWpm / 60`, because music, chorus, transitions and tails stay fixed and the whole difference must come from narration. Each candidate records the *probed MP4* length (`durations.<cut>.seconds`) next to the timeline and soundtrack lengths, and QA fails if the file and soundtrack disagree. Narration is never sped up, trimmed or padded to fit: when measured audio is outside the window the pipeline does one targeted script revision for that cut (`--duration-rounds`, default 1) and re-runs only what that changes, then fails with a *duration* error that shows measured vs. allowed. `ALLOW_DURATION_MISMATCH=1` overrides, for old short videos.
 
@@ -55,11 +55,11 @@ npm run pipeline -- <slug> --from direct --to render      # a range
 npm run pipeline -- <slug> --stage direct --shots a,b --notes "use a comparison"   # redirect selected shots
 npm run pipeline -- <slug> --stage render --shots a,b     # half-res previews of just those shots
 npm run pipeline -- <slug> --stage render --preview       # half-res candidate (can't be approved)
-npm run pipeline -- <slug> --stage qa --visual-review     # QA plus Claude inspecting the contact sheets
+npm run pipeline -- <slug> --stage qa --visual-review     # QA plus the selected provider inspecting the contact sheets
 npm run generate -- "Topic" [--render] [--skip-factcheck] # old command, now a wrapper around the pipeline
 ```
 
-Other flags: `--formats main,short`, `--force`, `--allow-missing-assets`, `--fix-rounds N` (automatic QA fix rounds in continue mode, default 1, `0` disables), `--duration-rounds N` (script revisions after a duration failure, default 1). Env: `CLAUDE_MODEL`, `CLAUDE_EFFORT` (e.g. `low`) for the model calls; `DATA_ROOT` points specs/config/out at another directory (tests).
+Other flags: `--formats main,short`, `--force`, `--allow-missing-assets`, `--fix-rounds N` (automatic QA fix rounds in continue mode, default 1, `0` disables), `--duration-rounds N` (script revisions after a duration failure, default 1). Claude-only env overrides: `CLAUDE_MODEL`, `CLAUDE_EFFORT` and their per-step forms; `DATA_ROOT` points specs/config/out at another directory (tests).
 
 ## What "continue" does
 
@@ -89,8 +89,8 @@ Editing the storyboard (in the admin panel or by hand) only invalidates what dep
 - **Archive before overwrite.** The storyboard and sources are copied to `out/<slug>/archive/` before every rewrite (fresh script, fact-check revision, direction, admin edit).
 - **Immutable candidates.** Every render is a new `out/<slug>/candidates/<timestamp>/`. The approved candidate, the newest six (`KEEP_CANDIDATES`) and recently reviewed ones are kept; renders are reproducible from `props.json`.
 - **Locks.** `out/<slug>/.pipeline.lock` stops two jobs on one video (CLI and admin included); `out/.render.lock` keeps one Remotion render at a time. Locks held by dead processes are taken over.
-- **Cancellation.** SIGTERM marks the running stage `cancelled` in `state.json`, stops child processes (claude, Remotion, Blender) and releases locks. Partial renders are written to `*.partial.mp4` and deleted.
-- **Bounded retries.** `claude -p` calls retry once on transient errors and never on a usage-limit message; each call has a timeout (`CLAUDE_TIMEOUT_MS`, default 15 min). Claude's JSON is validated and sent back once with the problems.
+- **Cancellation.** SIGTERM marks the running stage `cancelled` in `state.json`, stops child processes (the selected provider request, Remotion, Blender) and releases locks. Partial renders are written to `*.partial.mp4` and deleted.
+- **Bounded retries.** Provider calls retry once on transient errors and never on a usage-limit message; Claude CLI calls have a timeout (`CLAUDE_TIMEOUT_MS`, default 15 min). Structured output from either provider is validated and repaired within the configured repair limit.
 
 ## The storyboard (VideoSpec v2)
 
@@ -152,13 +152,13 @@ Built-in illustrations (`src/assets/icons.tsx`) are original code-drawn SVG, so 
 - frames at 15%, 50% and 90% of every shot: nearly empty frames, frozen shots, near-identical compositions (dHash) between different shots, content touching the frame edge, visible MISSING-asset placeholders
 - text fit: headlines that can't fit at a readable size for the cut (same `fitText` the renderer uses)
 - contact sheets per cut, and per-shot frames for the admin panel
-- optional (`--visual-review`): one `claude -p` call that must Read every contact sheet, describe each one (so it is checked it looked), and return findings per shot
+- optional (`--visual-review`): one selected-provider call that must inspect every contact sheet, describe each one (so it is checked it looked), and return findings per shot
 
 Each finding names the shot, the time, and who should fix it (script, storyboard, assets, audio, scene, renderer).
 
-## Running Claude locally (no API key)
+## Provider authentication and usage
 
-All Claude steps shell out to the Claude Code CLI in headless mode using the logged-in subscription (`scripts/claude.ts`). It removes `ANTHROPIC_API_KEY` from the child's environment so the CLI can't bill the API, and drops nested-session variables. `CLAUDE_BIN` points at a specific binary; Calls pin `--model sonnet` by default; `CLAUDE_MODEL` overrides it. Heavy batches count against subscription usage limits, so the admin panel runs one job at a time.
+Claude runs through the locally installed Claude Code CLI and its logged-in subscription. The runtime removes `ANTHROPIC_API_KEY` and nested-session variables from that subprocess; `CLAUDE_BIN` selects the binary. ChatGPT uses the official Sign in with ChatGPT flow and subscription-backed Responses API; credentials are kept in the OS credential store, and requests set `store:false`. Connect it in **Settings > Provider** before starting a job. Only models listed for the connected account can be used. The selected provider is fixed per job; a disconnected account, expired authorization, unavailable model, or exhausted plan stops the run without switching providers.
 
 ## Recovering from common failures
 
@@ -166,7 +166,7 @@ All Claude steps shell out to the Claude Code CLI in headless mode using the log
 |---|---|
 | `Busy: pipeline <slug> ... holds .pipeline.lock` | Another job is running for that video (maybe in a terminal). Wait or cancel it; a lock from a dead process is taken over automatically. |
 | Fact-check still flagged after 2 revisions | Edit the flagged text in the Storyboard tab (the Fact-check tab shows corrections and sources) and run the fact-check again: only edited text is re-checked. |
-| `Claude subscription usage limit reached` | Nothing retries automatically; run the stage again after the limit resets. |
+| `Selected provider subscription usage limit reached` | Nothing retries automatically; run the stage again after the limit resets. |
 | `The audio is missing or out of date` on render | Run the audio stage (continue mode does it for you). |
 | Required asset missing | Add the file under `public/` and an entry with licence and source in `assets/manifest.json`, or switch the shot to a built-in illustration. |
 | Blender clip failed | The shot uses its 2D fallback and the Assets tab shows the error; fix and re-run the assets stage. |
@@ -175,4 +175,4 @@ All Claude steps shell out to the Claude Code CLI in headless mode using the log
 
 ## Usage, repair and budgets
 
-Every Claude call is recorded in `out/<slug>/usage.jsonl`, invalid replies are repaired field-by-field where safe, and optional budgets stop the pipeline before a call is launched. See [usage-budgets.md](usage-budgets.md).
+Every AI call records its provider in `out/<slug>/usage.jsonl`, invalid replies are repaired field-by-field where safe, and optional budgets stop the pipeline before a call is launched. See [usage-budgets.md](usage-budgets.md).

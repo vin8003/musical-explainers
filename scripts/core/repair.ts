@@ -1,8 +1,8 @@
-// Token-conscious repair of a Claude JSON reply that failed to parse or validate.
+// Token-conscious repair of a provider JSON reply that failed to parse or validate.
 // Pure functions (no I/O), so every rule is unit tested.
 //
 // Order of preference, cheapest first:
-//   1. local repair of a formatting defect (no Claude call)
+//   1. local repair of a formatting defect (no provider call)
 //   2. field repair: ask only for the failing fields, merge them back, re-run
 //      the FULL validator on the merged object
 //   3. full-object repair: only when the failures can't be attributed to

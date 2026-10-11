@@ -1,4 +1,4 @@
-// The usage ledger and budget circuit breaker for Claude calls.
+// The usage ledger and budget circuit breaker shared by AI providers.
 //
 // One append-only JSONL file per video (out/<slug>/usage.jsonl) holds a row per
 // call (including failed, repair and blocked ones). Rows carry a stable callId;
@@ -11,7 +11,7 @@
 import { randomUUID } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { aggregate, decideCall, describeBlock, limitStatus, parseLedger, summarize, unknownUsage, usageLine } from "../../src/schema/usage.mjs";
+import { aggregate, budgetsForProvider, decideCall, describeBlock, limitStatus, parseLedger, summarize, unknownUsage, usageLine } from "../../src/schema/usage.mjs";
 import type { Settings } from "../../src/schema/settings.mjs";
 import { DATA, PipelineError } from "./files";
 import { emit, updateState } from "./state";
@@ -27,6 +27,7 @@ export type UsageRecord = {
   callId: string;
   slug?: string;
   stage: string;
+  provider: "claude" | "chatgpt";
   /** What the call is for, e.g. "research", "script main". Never the prompt. */
   operation: string;
   /** Groups the generation call and all of its repair calls. */
@@ -83,10 +84,10 @@ export function writeRow(row: UsageRecord) {
   appendFileSync(f, JSON.stringify(row) + "\n");
 }
 
-/** A configured usage limit stopped the pipeline before a Claude call was started. */
+/** A configured usage limit stopped the pipeline before an AI call was started. */
 export class BudgetExceededError extends PipelineError {
   constructor(public blocks: ReturnType<typeof decideCall>["blocks"], public stage: string) {
-    super(`Usage budget reached; no Claude call was started. ${blocks.map(describeBlock).join(" | ")}`, "budget", "Raise or clear the limit in Settings > Usage budgets, then continue the pipeline: completed stages are kept.");
+    super(`Usage budget reached; no AI call was started. ${blocks.map(describeBlock).join(" | ")}`, "budget", "Raise or clear the limit in Settings > Usage budgets, then continue the pipeline: completed stages are kept.");
   }
 }
 
@@ -94,7 +95,7 @@ const inflight = new Map<string, { stage: string; repair: boolean }>();
 const warned = new Set<string>();
 
 export type Reservation = { callId: string; startedAt: string; stage: string; warnings: unknown[]; base: UsageRecord };
-export type CallRequest = { operation: string; operationId: string; step?: string; requestedModel: string; effort: string | null; attempt: number; repair: boolean; kind: string; reason?: string };
+export type CallRequest = { provider: "claude" | "chatgpt"; operation: string; operationId: string; step?: string; requestedModel: string; effort: string | null; attempt: number; repair: boolean; kind: string; reason?: string };
 
 /**
  * Circuit breaker, run synchronously before every launch (no await between the
@@ -112,14 +113,17 @@ export function reserveCall(req: CallRequest, budgets = ctx.budgets): Reservatio
   const startedAt = new Date().toISOString();
   const flying = [...inflight.values()];
   const repairRows = rows.filter((r) => r.repair && r.status !== "blocked");
+  // Subscription plan usage is not an API monetary cost. Ignore a cost ceiling
+  // for ChatGPT while keeping token, call and stage limits active.
+  const effectiveBudgets = budgetsForProvider(budgets, req.provider);
   const decision = decideCall({
-    budgets,
+    budgets: effectiveBudgets,
     stage,
     scope: { run: aggregate(rows), stage: aggregate(rows.filter((r) => r.stage === stage)) },
     inflight: { run: flying.length, stage: flying.filter((i) => i.stage === stage).length },
     repair: { isRepair: req.repair, operationAttempts: repairRows.filter((r) => r.operationId === req.operationId).length, runRepairCalls: repairRows.length + flying.filter((i) => i.repair).length },
   });
-  const base: UsageRecord = { v: 1, runId: ctx.runId, sessionId: ctx.sessionId, callId, slug: ctx.slug, stage, operation: req.operation, operationId: req.operationId, step: req.step, model: null, requestedModel: req.requestedModel, effort: req.effort, attempt: req.attempt, repair: req.repair, kind: req.kind, reason: req.reason, startedAt, status: "running", usage: unknownUsage() };
+  const base: UsageRecord = { v: 1, runId: ctx.runId, sessionId: ctx.sessionId, callId, slug: ctx.slug, stage, provider: req.provider, operation: req.operation, operationId: req.operationId, step: req.step, model: null, requestedModel: req.requestedModel, effort: req.effort, attempt: req.attempt, repair: req.repair, kind: req.kind, reason: req.reason, startedAt, status: "running", usage: unknownUsage() };
   if (!decision.allow) {
     writeRow({ ...base, endedAt: startedAt, durationMs: 0, status: "blocked", error: { category: "budget", message: decision.blocks.map(describeBlock).join(" | ").slice(0, 400) }, budget: { decision: "block", blocks: decision.blocks } });
     const err = new BudgetExceededError(decision.blocks, stage);
@@ -167,13 +171,15 @@ function announce(row: UsageRecord) {
 }
 
 export const slimRow = (r: UsageRecord) => ({
-  callId: r.callId, stage: r.stage, operation: r.operation, kind: r.kind, repair: r.repair, reason: r.reason, attempt: r.attempt,
+  callId: r.callId, provider: r.provider, stage: r.stage, operation: r.operation, kind: r.kind, repair: r.repair, reason: r.reason, attempt: r.attempt,
   model: r.model ?? r.requestedModel, effort: r.effort, status: r.status, error: r.error ?? null, durationMs: r.durationMs ?? null, startedAt: r.startedAt, endedAt: r.endedAt ?? null,
   usage: { status: r.usage.status, inputTokens: r.usage.inputTokens, outputTokens: r.usage.outputTokens, cacheReadTokens: r.usage.cacheReadTokens, cacheCreationTokens: r.usage.cacheCreationTokens, cost: r.usage.cost?.usd ?? null },
 });
 
 export function totalsPayload() {
-  const s = summarize(runRows(), ctx.budgets);
+  const rows = runRows();
+  const provider = rows.find((r) => r.provider)?.provider;
+  const s = summarize(rows, budgetsForProvider(ctx.budgets, provider));
   return { runId: ctx.runId, totals: s.run, stages: s.stages, limits: s.limits as ReturnType<typeof limitStatus> | null };
 }
 

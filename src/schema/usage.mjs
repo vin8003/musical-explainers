@@ -3,20 +3,24 @@
 // read ONE ledger through ONE aggregator. See docs/usage-budgets.md.
 //
 // Accounting rules
-//  * Numbers come only from the Claude CLI's structured output (`claude -p
-//    --output-format json`: `usage`, `modelUsage`, `total_cost_usd`). Nothing is
-//    estimated from text length. A field the CLI did not report is `null`
-//    ("unknown"), never 0.
+//  * Claude usage comes from the CLI's structured output. ChatGPT plan usage
+//    comes from the completed Responses API usage object. Nothing is estimated
+//    from text length. Fields a provider did not report are null (unknown).
 //  * The CLI (like the API) reports `input_tokens` EXCLUDING cached tokens;
 //    cache reads and cache writes are separate fields. So
 //        totalInputTokens = inputTokens + cacheReadTokens + cacheCreationTokens
 //    and each token is counted once. The native fields are kept in `native`.
-//  * Cost is the CLI's own `total_cost_usd`: an ESTIMATE at API list prices,
-//    not a bill, and not the 5-hour usage-window percentage (which no public
-//    interface exposes). No price table is hardcoded here.
+//  * Cost is only recorded when Claude's CLI reports its estimate at API list
+//    prices. ChatGPT subscription usage has no monetary cost field here.
 //  * Every call is a ledger row, including failed, repair and blocked ones.
 
 export const USAGE_VERSION = 1;
+
+/** Claude may report a list-price estimate; ChatGPT plan usage is not monetary API cost. */
+export function budgetsForProvider(budgets, provider) {
+  if (!budgets || provider !== "chatgpt") return budgets;
+  return { ...budgets, run: { ...budgets.run, maxEstimatedCost: null }, stage: { ...budgets.stage, maxEstimatedCost: null } };
+}
 
 const isNum = (v) => typeof v === "number" && Number.isFinite(v) && v >= 0;
 const num = (v) => (isNum(v) ? v : null);
@@ -146,7 +150,7 @@ const METRICS = [
   { key: "maxInputTokens", label: "input tokens", used: (t) => t.totalInputTokens, kind: "tokens" },
   { key: "maxOutputTokens", label: "output tokens", used: (t) => t.outputTokens, kind: "tokens" },
   { key: "maxEstimatedCost", label: "estimated cost (USD)", used: (t) => t.costUsd, kind: "cost" },
-  { key: "maxCalls", label: "Claude calls", used: (t) => t.calls, kind: "calls" },
+  { key: "maxCalls", label: "AI calls", used: (t) => t.calls, kind: "calls" },
 ];
 
 /**
@@ -170,7 +174,7 @@ export function limitStatus(budgets, run, stages) {
 }
 
 /**
- * Decision before a Claude call. Pure: `scope` = { run, stage } totals for the
+ * Decision before an AI call. Pure: `scope` = { run, stage } totals for the
  * run and for this stage, `inflight` = calls reserved but not yet finished in
  * this scope, `repair` = { isRepair, operationAttempts, runRepairCalls }.
  * Returns { allow, blocks[], warnings[] }; each block names the budget, limit,
@@ -196,7 +200,7 @@ export function decideCall({ budgets, stage, scope, inflight = { run: 0, stage: 
       const name = `${scopeName}.${m.key}`;
       if (m.kind === "calls") {
         const used = totals.calls + flying;
-        if (used >= limit) block(name, limit, used, scopeName, `${used} of ${limit} Claude calls already made or in progress`);
+        if (used >= limit) block(name, limit, used, scopeName, `${used} of ${limit} AI calls already made or in progress`);
         continue;
       }
       if (flying > 0) {
@@ -233,7 +237,7 @@ export const fmtUsd = (n) => (n === null || n === undefined ? "unknown" : `$${n 
 
 /** One terminal line from aggregated totals; says what is unavailable rather than printing 0. */
 export function usageLine(t) {
-  if (!t.calls) return "no Claude calls";
+  if (!t.calls) return "no AI calls";
   const bits = [`${t.calls} call${t.calls === 1 ? "" : "s"}${t.failed ? ` (${t.failed} failed)` : ""}`];
   if (t.repairCalls) bits.push(`${t.repairCalls} repair`);
   bits.push(t.totalInputTokens === null ? "tokens in: unknown" : `in ${fmtTokens(t.totalInputTokens)}${t.cacheReadTokens ? ` (cache read ${fmtTokens(t.cacheReadTokens)})` : ""}${t.lowerBound ? "+" : ""}`);

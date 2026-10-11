@@ -73,12 +73,12 @@ const statusPill = (s) => pill(s, STATUS_CLASS[s] ?? "");
 
 const STAGE_LABEL = { research: "Research", outline: "Outline", script: "Script", review: "Editorial review", factcheck: "Fact-check", direct: "Storyboard", assets: "Assets", audio: "Audio", render: "Render", qa: "Quality", package: "Package" };
 const STAGE_HELP = {
-  research: "Claude qualifies the topic, picks the strongest angle and builds a sourced research dossier (web search).",
+  research: "The selected provider qualifies the topic, picks the strongest angle and builds a sourced research dossier (web search).",
   outline: "Per format: how the viewer's understanding changes, beat by beat, with the claims each beat rests on and planned lengths.",
-  script: "Per format: Claude writes the landscape and the Short separately from the dossier and outline, to the configured duration.",
+  script: "Per format: The selected provider writes the landscape and Short separately from the dossier and outline, to the configured duration.",
   review: "Per format: an independent editorial rubric (clarity, depth, examples, format fit...). Weak scripts are revised once, then fail.",
-  factcheck: "Claude verifies every spoken and on-screen claim with web search; flagged text gets targeted revisions (max 2 rounds).",
-  direct: "Claude directs each shot: visual system, labels, camera, transitions, accents.",
+  factcheck: "The selected provider verifies every spoken and on-screen claim with web search; flagged text gets targeted revisions (max 2 rounds).",
+  direct: "The selected provider directs each shot: visual system, labels, camera, transitions, accents.",
   assets: "Resolves illustrations and licensed files; renders optional Blender 3D clips.",
   audio: "Narration, composed music, sung chorus, SFX, ducking and -14 LUFS mix; measured length checked against the duration range.",
   render: "Remotion renders a new candidate (16:9 and 9:16). Old candidates are kept.",
@@ -210,11 +210,11 @@ function runDialog(slug, preset = "continue") {
   const dlg = document.createElement("dialog");
   dlg.innerHTML = `
     <h2>Run pipeline</h2>
-    <p class="muted small">Runs <code>npm run pipeline</code> for <b>${esc(slug)}</b> on this Mac. Claude stages use your logged-in <code>claude</code> CLI. Stages that are already up to date are skipped. Jobs run one at a time.</p>
+    <p class="muted small">Runs <code>npm run pipeline</code> for <b>${esc(slug)}</b> on this Mac. AI stages use the <b>${esc(S.settings.provider === "chatgpt" ? "ChatGPT plan" : "Claude Code subscription")}</b>. Stages that are already up to date are skipped. Jobs run one at a time.</p>
     ${Object.entries(S.meta.modes).map(([k, label]) => `<label class="check" style="margin:6px 0"><input type="radio" name="mode" value="${k}" ${k === preset ? "checked" : ""}/> ${esc(label)}</label><br/>`).join("")}
     <label class="check" style="margin:10px 0 0"><input type="checkbox" name="fresh"/> Re-plan and write fresh scripts (outline + script; storyboards archived first, research kept)</label><br/>
     <label class="check" style="margin:6px 0 0"><input type="checkbox" name="preview"/> Preview render (half resolution, faster; can't be approved)</label><br/>
-    <label class="check" style="margin:6px 0 0"><input type="checkbox" name="visualReview"/> Ask Claude to inspect the rendered contact sheets (uses subscription)</label>
+    <label class="check" style="margin:6px 0 0"><input type="checkbox" name="visualReview"/> Ask the selected provider to inspect the rendered contact sheets</label>
     <div class="row" style="justify-content:flex-end;margin-top:14px"><button class="ghost" value="cancel">Cancel</button><button class="primary" value="go">Start</button></div>`;
   document.body.append(dlg);
   dlg.addEventListener("close", () => dlg.remove());
@@ -370,7 +370,7 @@ async function renderJobs() {
 }
 
 function bindCancel(root = app) {
-  $$("[data-cancel]", root).forEach((b) => (b.onclick = () => confirmDialog("Cancel this job?", "The running claude, render or Blender process is stopped. Finished stages and earlier candidates stay; the stopped stage is marked cancelled.", "Cancel job", async () => {
+  $$("[data-cancel]", root).forEach((b) => (b.onclick = () => confirmDialog("Cancel this job?", "The running provider request, render or Blender process is stopped. Finished stages and earlier candidates stay; the stopped stage is marked cancelled.", "Cancel job", async () => {
     await act(() => api(`/api/jobs/${b.dataset.cancel}/cancel`, { method: "POST" }), "Cancelled");
     render();
   })));
@@ -483,7 +483,7 @@ function renderOverviewTab(body) {
           <div class="small" title="${esc(STAGE_HELP[st])}">${esc(external ? "running in another process (e.g. a terminal)" : running ? (j.progress ? `${j.progress.what} ${j.progress.done}/${j.progress.total}` : "working…") : s?.reason ?? "")}</div>
           ${running && j ? progressBar(j.progress) : ""}
           ${run?.status === "failed" || run?.status === "cancelled" ? `<div class="small ${run.status === "failed" ? "err" : "muted"}">Last run ${esc(run.status)}${run.error?.message ? `: ${esc(run.error.message.slice(0, 220))}` : ""}${run.error?.hint ? `<div class="muted">${esc(run.error.hint)}</div>` : ""}</div>` : run?.endedAt ? `<div class="small muted">ran ${ago(Date.parse(run.endedAt))}${run.warnings?.length ? ` · ${run.warnings.length} warning(s)` : ""}</div>` : ""}
-          <div class="row" style="margin-top:6px"><button class="sm" data-stage="${st}" ${j ? "disabled" : ""}>Run</button>${st === "render" ? `<button class="sm ghost" data-stage="render" data-preview="1" ${j ? "disabled" : ""}>Preview</button>` : ""}${st === "qa" ? `<button class="sm ghost" data-stage="qa" data-review="1" ${j ? "disabled" : ""} title="Also ask Claude to inspect the contact sheets">+ Claude review</button>` : ""}</div>
+          <div class="row" style="margin-top:6px"><button class="sm" data-stage="${st}" ${j ? "disabled" : ""}>Run</button>${st === "render" ? `<button class="sm ghost" data-stage="render" data-preview="1" ${j ? "disabled" : ""}>Preview</button>` : ""}${st === "qa" ? `<button class="sm ghost" data-stage="qa" data-review="1" ${j ? "disabled" : ""} title="Also ask the selected provider to inspect the contact sheets">+ AI review</button>` : ""}</div>
         </div>`;
       }).join("")}</div>
       ${j ? `<div style="margin-top:12px">${jobPill(j)} <a href="#/video/${esc(v.slug)}/logs">watch the log</a>${progressBar(j.progress)}</div>` : ""}
@@ -512,7 +512,7 @@ function renderOverviewTab(body) {
       </div>
     </div>`;
   $("#continue", body).onclick = () => startJob(v.slug, { mode: "continue" }).catch(() => {});
-  $("#freshBtn", body).onclick = () => confirmDialog("Write fresh scripts?", "The current storyboards are archived to out/<slug>/archive/, then Claude re-plans both outlines from the research dossier and writes new landscape and Short scripts, and the pipeline continues from there. Approved renders are kept.", "Start", () => startJob(v.slug, { mode: "continue", fresh: true }));
+  $("#freshBtn", body).onclick = () => confirmDialog("Write fresh scripts?", "The current storyboards are archived to out/<slug>/archive/, then the selected provider re-plans both outlines from the research dossier and writes new landscape and Short scripts, and the pipeline continues from there. Approved renders are kept.", "Start", () => startJob(v.slug, { mode: "continue", fresh: true }));
   $$("[data-stage]", body).forEach((b) => (b.onclick = () => startJob(v.slug, { mode: "stage", stage: b.dataset.stage, preview: Boolean(b.dataset.preview), visualReview: Boolean(b.dataset.review) }).catch(() => {})));
 }
 
@@ -633,11 +633,11 @@ function usageStripHtml(u) {
   const [label, cls] = compl(t);
   const hot = (u.limits ?? []).filter((l) => l.state === "warning" || l.state === "exceeded");
   return `<div class="small" style="flex-basis:100%">
-    <b>Claude usage (this run):</b> ${t.calls} call${t.calls === 1 ? "" : "s"}${t.repairCalls ? ` (${t.repairCalls} repair)` : ""} ·
+    <b>AI usage (this run):</b> ${t.calls} call${t.calls === 1 ? "" : "s"}${t.repairCalls ? ` (${t.repairCalls} repair)` : ""} ·
     in ${t.totalInputTokens === null ? "unknown" : tok(t.totalInputTokens) + (t.lowerBound ? "+" : "")} · out ${t.outputTokens === null ? "unknown" : tok(t.outputTokens) + (t.lowerBound ? "+" : "")} ·
     est. cost ${t.costUsd === null ? "unavailable" : usd(t.costUsd) + (t.costUnknownCalls ? "+" : "")} <span class="pill ${cls}">${label}</span>
     ${hot.map((l) => `<span class="pill ${l.state === "exceeded" ? "bad" : "warn"}">${esc(l.scope)}${l.stage ? " " + esc(l.stage) : ""} ${esc(l.label)} ${pct(l.pct)}</span>`).join(" ")}
-    ${u.stop ? `<div class="err">Stopped by usage budget before a Claude call at ${esc(u.stop.stage)}: ${u.stop.blocks.map((b) => esc(b.budget)).join(", ")}. <a href="#/settings">Raise or clear the limit</a>, then continue; finished stages are kept.</div>` : ""}
+    ${u.stop ? `<div class="err">Stopped by usage budget before an AI call at ${esc(u.stop.stage)}: ${u.stop.blocks.map((b) => esc(b.budget)).join(", ")}. <a href="#/settings">Raise or clear the limit</a>, then continue; finished stages are kept.</div>` : ""}
   </div>`;
 }
 
@@ -668,19 +668,19 @@ async function renderUsageTab(body) {
   const sel = (id, opts, cur) => `<select id="${id}" style="width:auto">${opts.map(([v, l]) => `<option value="${esc(v)}" ${v === cur ? "selected" : ""}>${esc(l)}</option>`).join("")}</select>`;
   body.innerHTML = `
     ${stop ? `<div class="panel" style="border-color:var(--red)" role="alert"><h3 style="color:var(--red)">Stopped by a usage budget</h3>
-      <div>No Claude call was started in <b>${esc(stop.stage)}</b> because: ${stop.blocks.map((b) => `<div class="small"><code>${esc(b.budget)}</code> limit ${esc(b.limit)}, used ${b.used === null ? "unknown" : esc(b.used)} — ${esc(b.reason)}</div>`).join("")}</div>
-      <div class="small muted">This is a budget stop, not a generation failure or a Claude usage-window limit. Completed stages are kept. <a href="#/settings">Raise or clear the limit</a>, then continue the pipeline.</div></div>` : ""}
-    <div class="row" style="margin-bottom:8px"><h2 class="grow" style="margin:0">Claude usage <span class="pill ${cls}">${label}</span></h2>
+      <div>No AI call was started in <b>${esc(stop.stage)}</b> because: ${stop.blocks.map((b) => `<div class="small"><code>${esc(b.budget)}</code> limit ${esc(b.limit)}, used ${b.used === null ? "unknown" : esc(b.used)} — ${esc(b.reason)}</div>`).join("")}</div>
+      <div class="small muted">This is a budget stop, not a generation failure or a provider usage-window limit. Completed stages are kept. <a href="#/settings">Raise or clear the limit</a>, then continue the pipeline.</div></div>` : ""}
+    <div class="row" style="margin-bottom:8px"><h2 class="grow" style="margin:0">AI usage <span class="pill ${cls}">${label}</span></h2>
       <label class="small muted">Run ${sel("usRun", [["", "latest"], ["all", "all runs"], ...d.runs.map((r) => [r, r])], run)}</label></div>
     <div class="grid2" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr));margin-bottom:16px">
-      ${tile("Claude calls", `${t.calls}`, `${t.ok} ok · ${t.failed} failed${t.blocked ? ` · ${t.blocked} blocked before launch` : ""}`)}
+      ${tile("AI calls", `${t.calls}`, `${t.ok} ok · ${t.failed} failed${t.blocked ? ` · ${t.blocked} blocked before launch` : ""}`)}
       ${tile("Repair calls", `${t.repairCalls}`, "extra calls to fix invalid output")}
       ${tile("Input tokens", known(t.totalInputTokens, t.lowerBound), `fresh ${t.inputTokens === null ? "unknown" : tok(t.inputTokens)} · cache read ${t.cacheReadTokens === null ? "unknown" : tok(t.cacheReadTokens)} · cache write ${t.cacheCreationTokens === null ? "unknown" : tok(t.cacheCreationTokens)}`)}
       ${tile("Output tokens", known(t.outputTokens, t.lowerBound))}
       ${tile("Estimated cost", t.costUsd === null ? `<span class="muted">unavailable</span>` : esc(usd(t.costUsd)) + (t.costUnknownCalls ? "+" : ""), t.costUnknownCalls && t.calls ? `${t.costUnknownCalls} call(s) without a cost` : "CLI estimate, not a bill")}
-      ${tile("Time in Claude calls", `${Math.round(t.durationMs / 1000)}s`)}
+      ${tile("Time in AI calls", `${Math.round(t.durationMs / 1000)}s`)}
     </div>
-    <div class="small muted" style="margin-bottom:16px">Measured from the Claude CLI's structured output. Token usage, estimated cost (the CLI's estimate at API list prices) and the 5-hour usage-window percentage are different measurements; the window percentage is not available here. "unknown" means the CLI did not report it; it is never counted as zero. A trailing + means at least one call's usage was missing, so the real number is higher.</div>
+    <div class="small muted" style="margin-bottom:16px">Usage is provider-reported. Estimated cost is only available when Claude reports its API-list-price estimate; ChatGPT plan usage has no monetary cost value here. "Unknown" means the provider did not report it, never zero. A trailing + means at least one call's usage was missing, so the real number is higher.</div>
     <div class="panel tablewrap"><h3>Budgets</h3>
       ${lim.length ? `<table><thead><tr><th>Scope</th><th>Limit</th><th>Used</th><th>Remaining</th><th style="width:180px">Progress</th></tr></thead><tbody>${lim.map((l) => `<tr><td>${esc(l.scope)}${l.stage ? ` · ${esc(l.stage)}` : ""}</td><td>${esc(l.label)}: ${esc(l.limit)}</td><td>${l.used === null ? "unknown" : esc(l.metric === "maxEstimatedCost" ? usd(l.used) : l.used)}</td><td>${l.remaining === null ? "unknown" : esc(l.metric === "maxEstimatedCost" ? usd(l.remaining) : l.remaining)}</td><td>${bar(l.pct, l.state)}<span class="small ${l.state === "exceeded" ? "err" : l.state === "warning" ? "" : "muted"}" style="${l.state === "warning" ? "color:var(--orange)" : ""}">${pct(l.pct)}${l.state === "warning" ? " · warning" : l.state === "exceeded" ? " · limit reached" : l.state === "unknown" ? " · usage unknown" : ""}</span></td></tr>`).join("")}</tbody></table>`
         : `<div class="small muted">No run or stage limits are set: usage is unrestricted. An empty limit means no limit (not zero). Set limits in <a href="#/settings">Settings</a>.</div>`}
@@ -692,7 +692,7 @@ async function renderUsageTab(body) {
         const sl = lim.filter((l) => l.scope === "stage" && l.stage === stage);
         return `<tr><td><b>${esc(stage)}</b>${bar((size / maxSize) * 100)}</td><td>${x.calls}</td><td>${x.ok} / ${x.failed}</td><td>${x.repairCalls}</td><td>${stageNum(x, x.totalInputTokens, x.lowerBound)}</td><td>${stageNum(x, x.outputTokens, x.lowerBound)}</td><td>${stageNum(x, x.cacheReadTokens)} / ${stageNum(x, x.cacheCreationTokens)}</td><td>${x.calls === 0 ? "–" : x.costUsd === null ? '<span class="muted">unavailable</span>' : esc(usd(x.costUsd))}</td><td>${Math.round(x.durationMs / 1000)}s</td>
           <td>${sl.length ? sl.map((l) => `<div class="small">${esc(l.label)}: ${l.remaining === null ? "unknown" : esc(l.remaining)} left · ${pct(l.pct)}${bar(l.pct, l.state)}</div>`).join("") : '<span class="muted small">no limit</span>'}</td></tr>`;
-      }).join("") || '<tr><td colspan="10" class="muted">No Claude calls in this run (cached stages make none).</td></tr>'}
+      }).join("") || '<tr><td colspan="10" class="muted">No AI calls in this run (cached stages make none).</td></tr>'}
       </tbody></table></div>
     <div class="panel tablewrap"><h3>Calls (${calls.length} of ${d.calls.length})</h3>
       <div class="row" style="margin-bottom:8px">
@@ -702,7 +702,7 @@ async function renderUsageTab(body) {
         <input id="usfText" placeholder="search operation / error" value="${esc(filters.text)}" style="width:220px" />
       </div>
       <table><thead><tr><th>Time</th><th>Stage / operation</th><th>Model · effort</th><th>#</th><th>Kind</th><th>In / out</th><th>Usage</th><th>Time</th><th>Outcome</th></tr></thead><tbody>
-      ${calls.slice().reverse().map((c) => `<tr data-call="${esc(c.callId)}" style="cursor:pointer"><td class="small">${esc((c.startedAt ?? "").slice(11, 19))}</td><td>${esc(c.stage)} · ${esc(c.operation)}</td><td class="small">${esc(c.model ?? c.requestedModel)} · ${esc(c.effort ?? "?")}</td><td>${c.attempt}</td><td><span class="pill ${c.repair ? "warn" : ""}">${esc(c.kind)}</span></td>
+      ${calls.slice().reverse().map((c) => `<tr data-call="${esc(c.callId)}" style="cursor:pointer"><td class="small">${esc((c.startedAt ?? "").slice(11, 19))}</td><td><span class="pill">${esc(c.provider ?? "unknown provider")}</span> ${esc(c.stage)} · ${esc(c.operation)}</td><td class="small">${esc(c.model ?? c.requestedModel)} · ${esc(c.effort ?? "?")}</td><td>${c.attempt}</td><td><span class="pill ${c.repair ? "warn" : ""}">${esc(c.kind)}</span></td>
         <td class="small">${c.status === "blocked" ? "–" : `${tok(c.usage?.totalInputTokens)} / ${tok(c.usage?.outputTokens)}`}</td><td><span class="pill ${c.usage?.status === "known" ? "ok" : "warn"}">${esc(c.status === "blocked" ? "not launched" : c.usage?.status ?? "unknown")}</span></td><td class="small">${c.durationMs == null ? "" : Math.round(c.durationMs / 100) / 10 + "s"}</td>
         <td><span class="pill ${c.status === "ok" ? "ok" : c.status === "running" ? "run" : "bad"}">${esc(c.status)}</span>${c.error ? ` <span class="small err">${esc(c.error.category)}</span>` : ""}${c.reason ? `<div class="small muted">${esc(c.reason)}</div>` : ""}</td></tr>
         <tr data-detail="${esc(c.callId)}" hidden><td colspan="9"><pre class="log" style="max-height:260px;overflow:auto">${esc(JSON.stringify({ ...c, note: "metadata only: prompts and replies are never stored in the ledger" }, null, 2))}</pre></td></tr>`).join("") || '<tr><td colspan="9" class="muted">No calls match.</td></tr>'}
@@ -716,14 +716,14 @@ async function renderUsageTab(body) {
 
 // ----- settings: usage budgets form -----
 
-const BUDGET_LABELS = { maxInputTokens: "Max input tokens", maxOutputTokens: "Max output tokens", maxEstimatedCost: "Max estimated cost (USD)", maxCalls: "Max Claude calls" };
+const BUDGET_LABELS = { maxInputTokens: "Max input tokens", maxOutputTokens: "Max output tokens", maxEstimatedCost: "Max estimated cost (USD)", maxCalls: "Max AI calls" };
 function budgetsFormHtml(b) {
   const v = (x) => (x === null || x === undefined ? "" : esc(x));
   const group = (scope, title, help) => `<div class="panel"><h3>${title}</h3><div class="small muted" style="margin-bottom:8px">${help}</div>
     <div class="grid2" style="gap:8px">${Object.entries(BUDGET_LABELS).map(([k, l]) => `<div class="field"><label for="b-${scope}-${k}">${l}</label><input id="b-${scope}-${k}" data-b="${scope}.${k}" type="number" min="0" step="${k === "maxEstimatedCost" ? "any" : 1}" placeholder="no limit" value="${v(b?.[scope]?.[k])}" /></div>`).join("")}</div></div>`;
   return `<h2>Usage budgets</h2>
-    <div class="panel"><div class="small muted"><b>Leave a field empty for no limit.</b> Empty is unrestricted; <b>0</b> is a real zero allowance and blocks every call. Limits are checked before each Claude call and count every call of the run, including failed and repair calls. Token and cost limits use usage the Claude CLI reported, so one call can finish past a limit; the next call is then refused. Estimated cost is the CLI's own estimate, not a bill. New jobs use the values saved here; a running job keeps its own.</div></div>
-    <div class="grid2">${group("run", "Whole run", "All Claude calls for this video's current run.")}${group("stage", "Each stage", "Applies to every stage separately (research, outline, script, ...).")}</div>
+    <div class="panel"><div class="small muted"><b>Leave a field empty for no limit.</b> Empty is unrestricted; <b>0</b> is a real zero allowance and blocks every call. Limits are checked before each AI call and count every call of the run, including failed and repair calls. Token limits use provider-reported usage; cost limits use Claude estimates only, so they do not represent ChatGPT plan usage. One call can finish past a limit; the next call is then refused. An estimated cost is not a bill. New jobs use the values saved here; a running job keeps its own.</div></div>
+    <div class="grid2">${group("run", "Whole run", "All AI calls for this video's current run.")}${group("stage", "Each stage", "Applies to every stage separately (research, outline, script, ...).")}</div>
     <div class="panel"><div class="grid2" style="gap:8px">
       <div class="field"><label for="b-repair-attempts">Max repair attempts per operation</label><input id="b-repair-attempts" data-b="repair.maxAttemptsPerOperation" type="number" min="0" step="1" value="${v(b?.repair?.maxAttemptsPerOperation)}" /><div class="small muted">Default 1. Never more than 3, even if empty.</div></div>
       <div class="field"><label for="b-repair-calls">Max repair calls per run</label><input id="b-repair-calls" data-b="repair.maxCallsPerRun" type="number" min="0" step="1" placeholder="no limit" value="${v(b?.repair?.maxCallsPerRun)}" /></div>
@@ -752,6 +752,12 @@ async function renderSettings() {
   const [data, schema] = await Promise.all([api("/api/settings"), loadSettingsSchema()]);
   S.settings = data;
   const eff = data.settings;
+  let chatgptStatus = { status: "disconnected", sharing: false };
+  let chatgptModels = [];
+  try { chatgptStatus = await api("/api/chatgpt/status"); } catch { /* The settings form remains usable if a system keyring is unavailable. */ }
+  if (chatgptStatus.sharing) try { chatgptModels = (await api("/api/chatgpt/models")).models ?? []; } catch { /* Render connection state below. */ }
+  const providerState = structuredClone(eff.providers);
+  let selectedProvider = eff.provider;
   const mmss = (sec) => ({ m: Math.floor(sec / 60), s: Math.round(sec % 60) });
   const durInput = (f, k, label, help) => {
     const v = mmss(eff.formats[f][k]);
@@ -785,18 +791,12 @@ async function renderSettings() {
         </div>
         <div class="err small" data-err="narration"></div>
       </div>
-      <h2>Models and effort</h2>
+      <h2>AI provider and models</h2>
       <div class="panel">
-        <div class="small muted" style="margin-bottom:8px">One row per Claude call. Effort is how much the model reasons (and costs): raise it where output quality is judged by people, lower it where code validates the result and retries. Sonnet is the ceiling; Haiku is the cheap option. Environment variables <code>CLAUDE_MODEL</code> / <code>CLAUDE_EFFORT</code> (or <code>CLAUDE_MODEL_DIRECT</code> etc.) override these for one run.</div>
-        <div class="tablewrap"><table>
-          <thead><tr><th>Step</th><th>Model</th><th>Effort</th><th>Why</th></tr></thead>
-          <tbody>${schema.MODEL_STEPS.map((st) => `<tr data-step="${st.id}">
-            <td><b>${esc(st.label)}</b>${st.tools ? ` <span class="pill">${st.tools === "web" ? "web search" : "reads images"}</span>` : ""}</td>
-            <td><select data-m="${st.id}" aria-label="${esc(st.label)} model">${schema.MODEL_CHOICES.map((m) => `<option ${eff.models[st.id].model === m ? "selected" : ""}>${m}</option>`).join("")}</select></td>
-            <td><select data-e="${st.id}" aria-label="${esc(st.label)} effort">${schema.EFFORT_LEVELS.map((e) => `<option ${eff.models[st.id].effort === e ? "selected" : ""}>${e}</option>`).join("")}</select></td>
-            <td class="small muted">${esc(st.why)}</td></tr>`).join("")}</tbody>
-        </table></div>
-        <div class="row" style="margin-top:8px"><button type="button" class="sm ghost" id="modelsReset">Reset models to defaults</button></div>
+        <div class="field"><label for="aiProvider">Provider used for every AI stage</label><select id="aiProvider"><option value="claude" ${selectedProvider === "claude" ? "selected" : ""}>Claude (Claude Code subscription)</option><option value="chatgpt" ${selectedProvider === "chatgpt" ? "selected" : ""}>ChatGPT (ChatGPT plan usage)</option></select><div class="small muted">Each provider keeps its own model choices. A job uses one provider from start to finish and stops clearly if it is disconnected or misconfigured.</div></div>
+        <div id="chatgptConnection" class="small" style="margin:8px 0"></div>
+        <div id="providerModels"></div>
+        <div class="row" style="margin-top:8px"><button type="button" class="sm ghost" id="modelsReset">Reset this provider's models to defaults</button></div>
         <div class="err small" data-err="models"></div>
       </div>
       ${budgetsFormHtml(eff.budgets)}
@@ -806,8 +806,13 @@ async function renderSettings() {
   const form = $("#settingsForm");
   const read = () => {
     const num = (el) => (el.value.trim() === "" ? NaN : Number(el.value));
-    const out = { formats: { main: {}, short: {} }, narration: { wordsPerMinute: num($("#wpm")), targetTolerance: num($("#tol")) / 100 }, models: {} };
-    for (const st of schema.MODEL_STEPS) out.models[st.id] = { model: $(`[data-m=${st.id}]`, form).value, effort: $(`[data-e=${st.id}]`, form).value };
+    const out = { provider: selectedProvider, providers: providerState, formats: { main: {}, short: {} }, narration: { wordsPerMinute: num($("#wpm")), targetTolerance: num($("#tol")) / 100 } };
+    for (const st of schema.MODEL_STEPS) {
+      const model = $(`[data-m=${st.id}]`, form)?.value;
+      const effort = $(`[data-e=${st.id}]`, form)?.value;
+      if (model !== undefined) providerState[selectedProvider].models[st.id].model = model;
+      if (effort !== undefined) providerState[selectedProvider].models[st.id].effort = effort;
+    }
     out.budgets = readBudgets(form);
     const unitErrors = [];
     for (const f of ["main", "short"])
@@ -835,14 +840,60 @@ async function renderSettings() {
     $("#setRevert").disabled = false;
     check();
   };
+  const renderProviderControls = () => {
+    const status = $("#chatgptConnection", form);
+    if (selectedProvider === "chatgpt") {
+      const label = chatgptStatus.sharing ? `Connected to ChatGPT${chatgptStatus.account ? ` as ${chatgptStatus.account}` : ""}. Requests use your ChatGPT plan.` : `ChatGPT status: ${chatgptStatus.status.replaceAll("_", " ")}.`;
+      status.innerHTML = `<div>${esc(label)} ${chatgptStatus.error ? `<span class="err">${esc(chatgptStatus.error)}</span>` : ""}</div><div class="row" style="margin-top:6px"><button type="button" class="sm primary" id="chatgptConnect">${chatgptStatus.sharing ? "Reconnect ChatGPT" : "Continue with ChatGPT"}</button>${chatgptStatus.sharing ? `<button type="button" class="sm ghost" id="chatgptDisconnect">Disconnect</button>` : ""}<a class="sm" target="_blank" rel="noreferrer" href="https://chatgpt.com/settings/usage">Manage usage</a></div>`;
+      $("#chatgptConnect", form).onclick = async () => {
+        try {
+          await api("/api/chatgpt/connect", { method: "POST", body: {} });
+          toast("Complete the ChatGPT sign-in and plan usage consent in your browser.");
+          const started = Date.now();
+          const poll = async () => {
+            chatgptStatus = await api("/api/chatgpt/status");
+            if (chatgptStatus.sharing) { const result = await api("/api/chatgpt/models"); chatgptModels = result.models ?? []; renderProviderControls(); dirty(); toast("ChatGPT plan usage is connected."); return; }
+            if (chatgptStatus.error || Date.now() - started > 600000) { renderProviderControls(); return; }
+            setTimeout(poll, 1200);
+          };
+          poll();
+        } catch (e) { toast(e.message, true); }
+      };
+      if ($("#chatgptDisconnect", form)) $("#chatgptDisconnect", form).onclick = async () => {
+        const disconnected = await api("/api/chatgpt/disconnect", { method: "POST", body: {} });
+        chatgptStatus = { status: "disconnected", sharing: false }; chatgptModels = [];
+        renderProviderControls(); dirty();
+        if (disconnected.remoteRevocation === "unconfirmed") toast("Local credentials were removed. Open ChatGPT Settings → Usage to confirm disconnection.", true);
+      };
+    } else status.innerHTML = `<span class="small muted">${esc(chatgptStatus.sharing ? "Your ChatGPT connection is saved and will still be available when you switch back." : "Claude runs through the local Claude Code CLI and its logged-in subscription.")}</span>`;
+    const config = providerState[selectedProvider].models;
+    const choices = selectedProvider === "claude" ? schema.MODEL_CHOICES.map((id) => ({ id, name: id })) : chatgptModels;
+    const rows = schema.MODEL_STEPS.map((st) => {
+      const selected = config[st.id].model;
+      const models = `<option value="">${selectedProvider === "chatgpt" && !chatgptStatus.sharing ? "Connect to load eligible models" : "Select a supported model"}</option>${choices.map((m) => `<option value="${esc(m.id)}" ${selected === m.id ? "selected" : ""}>${esc(m.name)}</option>`).join("")}`;
+      const efforts = selectedProvider === "claude" ? schema.EFFORT_LEVELS : (chatgptModels.find((m) => m.id === selected)?.reasoningEfforts ?? []);
+      const effort = efforts.length ? `<select data-e="${st.id}" aria-label="${esc(st.label)} reasoning effort">${efforts.map((x) => `<option value="${esc(x)}" ${config[st.id].effort === x ? "selected" : ""}>${esc(x)}</option>`).join("")}</select>` : `<span class="small muted">Provider default</span>`;
+      return `<tr><td><b>${esc(st.label)}</b>${st.tools ? ` <span class="pill">${st.tools === "web" ? "web search" : "image review"}</span>` : ""}</td><td><select data-m="${st.id}" aria-label="${esc(st.label)} model">${models}</select></td><td>${effort}</td><td class="small muted">${esc(st.why)}</td></tr>`;
+    }).join("");
+    const note = selectedProvider === "claude" ? "Claude aliases and per-step effort. Claude model environment overrides apply only to Claude runs." : "Models come from the connected account's ChatGPT plan catalog and are rechecked before each request. ChatGPT plan usage is not API-key billing.";
+    $("#providerModels", form).innerHTML = `<div class="small muted" style="margin-bottom:8px">${note}</div><div class="tablewrap"><table><thead><tr><th>Step</th><th>Model</th><th>Reasoning effort</th><th>Purpose</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+    $$('[data-m], [data-e]', form).forEach((el) => el.onchange = () => {
+      const st = el.dataset.m ?? el.dataset.e;
+      config[st].model = $(`[data-m=${st}]`, form).value;
+      if ($(`[data-e=${st}]`, form)) config[st].effort = $(`[data-e=${st}]`, form).value;
+      renderProviderControls(); dirty();
+    });
+  };
+  $("#aiProvider", form).onchange = (e) => { selectedProvider = e.target.value; renderProviderControls(); dirty(); };
+  renderProviderControls();
   $$("input, select", form).forEach((el) => (el.oninput = dirty));
   $("#modelsReset").onclick = () => {
     for (const st of schema.MODEL_STEPS) {
-      $(`[data-m=${st.id}]`, form).value = data.defaults.models[st.id].model;
-      $(`[data-e=${st.id}]`, form).value = data.defaults.models[st.id].effort;
+      providerState[selectedProvider].models[st.id] = structuredClone(data.defaults.providers[selectedProvider].models[st.id]);
     }
+    renderProviderControls();
     dirty();
-    toast("Models reset to the defaults; save to apply");
+    toast("This provider's models reset; save to apply");
   };
   $$("[data-reset]", form).forEach((b) => (b.onclick = () => {
     const f = b.dataset.reset;
@@ -912,7 +963,7 @@ function renderStoryboardTab(body) {
     </div>
     <div class="panel">
       <h3>Targeted regeneration</h3>
-      <p class="small muted">Select shots above, then redirect them with Claude (optionally with notes), or render quick half-resolution previews of just those shots. The rest of the storyboard is kept.</p>
+      <p class="small muted">Select shots above, then redirect them with the selected provider (optionally with notes), or render quick half-resolution previews of just those shots. The rest of the storyboard is kept.</p>
       <textarea id="redirectNotes" rows="2" placeholder="Notes for the director, e.g. 'use a comparison instead; fewer labels'"></textarea>
       <div class="row" style="margin-top:8px"><span class="small muted grow" id="selCount">${selected.size} shot(s) selected</span>
         <button id="redirect" ${v.job || !selected.size ? "disabled" : ""}>Redirect selected shots</button>
@@ -1076,7 +1127,7 @@ function renderFactTab(body) {
         <select id="fcFilter" style="width:auto"><option value="flagged">Flagged only</option><option value="all">All claims</option></select>
         <button class="sm" id="rerun" ${v.job ? "disabled" : ""}>Check new text</button>
       </div>
-      <p class="small muted">Only new or edited text is sent to Claude; text that already passed keeps its verdict and sources.</p>
+      <p class="small muted">Only new or edited text is sent to the selected provider; text that already passed keeps its verdict and sources.</p>
       ${shown.length ? shown.map((c) => `
         <div class="claim ${esc(c.verdict)}">
           <div class="row"><span class="c grow">${esc(c.claim)}</span>${c.shot ? pill(c.shot) : ""}${pill(c.verdict, c.verdict === "ok" ? "ok" : c.verdict === "fix" ? "warn" : "bad")}</div>
@@ -1158,7 +1209,7 @@ function benchmarkHtml(history) {
     <div class="grid2" style="grid-template-columns:repeat(auto-fit,minmax(145px,1fr));margin-bottom:12px">
       ${metric("Quality checks", qualityCounts, qualityUnknown)}
       ${metric("Expected concept coverage", q.coverage == null ? "unavailable" : `${Math.round(q.coverage * 100)}%`, `essential ${q.essentialCoverage == null ? "unavailable" : `${Math.round(q.essentialCoverage * 100)}%`}`)}
-      ${metric("Claude calls", e.calls ?? 0, `${e.repairs ?? 0} repairs · ${e.failures ?? 0} call failures`)}
+      ${metric("AI calls", e.calls ?? 0, `${e.repairs ?? 0} repairs · ${e.failures ?? 0} call failures`)}
       ${metric("Tokens", `${tokens(e.inputTokens)} in · ${tokens(e.outputTokens)} out`, `cost ${cost}`)}
       ${metric("Model call time", callTime, `${cacheHits} cached stage(s)`)}
       ${metric("Final duration", Object.entries(run.durations ?? {}).map(([f, sec]) => `${f} ${sec == null ? "unknown" : dur(sec)}`).join(" · ") || "unavailable")}
@@ -1189,14 +1240,14 @@ function renderQualityTab(body) {
         <select id="qaCand" style="width:auto">${cands.map((c) => `<option value="${esc(c.id)}" ${c.id === id ? "selected" : ""}>${esc(c.id)}${c.preview ? " (preview)" : ""} · ${esc(v.qa[c.id].status)}</option>`).join("")}</select>
         <span class="grow">${pill(r.status.toUpperCase(), r.status === "pass" ? "ok" : r.status === "warn" ? "warn" : "bad")} <span class="small muted">${esc(r.summary)}</span></span>
         <button class="sm" data-stage="qa" ${v.job ? "disabled" : ""}>Re-run QA</button>
-        <button class="sm ghost" data-stage="qa" data-review="1" ${v.job ? "disabled" : ""}>+ Claude review</button>
+        <button class="sm ghost" data-stage="qa" data-review="1" ${v.job ? "disabled" : ""}>+ AI review</button>
       </div>
       <table class="small">
         <thead><tr><th></th><th>Check</th><th>Where</th><th>Finding</th><th>Fix belongs to</th></tr></thead>
         <tbody>${findings.map((f) => `<tr><td>${pill(f.severity, f.severity === "fail" ? "bad" : f.severity === "warn" ? "warn" : "")}</td><td class="mono">${esc(f.check)}</td><td>${esc([f.format, f.shot, f.at != null ? `${f.at.toFixed(1)}s` : ""].filter(Boolean).join(" · "))}</td><td>${esc(f.message)}</td><td>${esc(f.owner ?? "")}</td></tr>`).join("") || `<tr><td colspan="5" class="muted">No findings.</td></tr>`}</tbody>
       </table>
     </div>
-    ${r.review ? `<div class="panel"><h3>Claude's review of the frames</h3><p>${esc(r.review.overall)} ${pill(`teaches: ${r.review.teaches}`, r.review.teaches === "yes" ? "ok" : "warn")}</p>
+    ${r.review ? `<div class="panel"><h3>AI review of the frames</h3><p>${esc(r.review.overall)} ${pill(`teaches: ${r.review.teaches}`, r.review.teaches === "yes" ? "ok" : "warn")}</p>
       <details><summary class="small muted">What it inspected</summary>${r.review.inspected.map((x) => `<div class="small">${esc(x)}</div>`).join("")}</details></div>` : ""}
     <div class="panel"><h3>Media</h3><table class="small"><tbody>${Object.entries(r.media).map(([f, m]) => `<tr><td>${f}</td><td>${m.width}x${m.height} · ${m.fps} fps · ${m.seconds.toFixed(2)}s (timeline ${m.expectedSeconds.toFixed(2)}s) · ${esc(m.video)} · audio ${esc(m.audio ?? "none")}${m.loudness ? ` · ${m.loudness.I} LUFS` : ""}</td></tr>`).join("")}</tbody></table></div>
     ${Object.entries(r.sheets).map(([f, s]) => `<div class="panel"><h3>Contact sheet · ${f === "main" ? "16:9" : "9:16"}</h3><a href="/media/${esc(v.slug)}/c/${esc(id)}/qa/${esc(s)}" target="_blank"><img class="sheet" src="/media/${esc(v.slug)}/c/${esc(id)}/qa/${esc(s)}" /></a></div>`).join("")}

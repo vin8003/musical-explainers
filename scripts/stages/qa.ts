@@ -2,14 +2,14 @@
 // container/stream checks, loudness/silence/clipping, sampled frames per shot
 // (blank, frozen, near-duplicate compositions, content touching the frame
 // edge, visible missing-asset placeholders), a text-fit lint, contact sheets
-// for humans, and an optional bounded Claude review of those sheets.
+// for humans, and an optional bounded AI review of those sheets.
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fitText, formatFor } from "../../src/layout";
 import type { Timeline } from "../../src/schema/timeline.mjs";
 import type { RenderProps } from "../../src/types";
-import { claudeJson } from "../claude";
+import { aiJson } from "../ai";
 import { paths, PipelineError, readJson, ROOT, writeJson } from "../core/files";
 import { updateState } from "../core/state";
 import { checkDuration } from "../../src/schema/settings.mjs";
@@ -38,7 +38,7 @@ export type QaReport = {
   media: Record<string, { width: number; height: number; fps: number; seconds: number; expectedSeconds: number; video: string; audio: string | null; loudness?: { I: number; TP: number; LRA: number } | null; range?: { targetSeconds: number; minSeconds: number; maxSeconds: number; verdict: string } }>;
   sheets: Record<string, string>;
   frames: { format: string; shot: string; index: number; type: string; pct: number; file: string }[];
-  review?: { model: "claude"; inspected: string[]; overall: string; teaches: string; findings: Finding[] } | null;
+  review?: { model: "claude" | "chatgpt"; inspected: string[]; overall: string; teaches: string; findings: Finding[] } | null;
 };
 
 /**
@@ -170,7 +170,7 @@ export function layoutLint(props: RenderProps, only?: "main" | "short"): Finding
   return out;
 }
 
-const REVIEW_PROMPT = `You are reviewing a rendered educational music video before a human approves it. Use the Read tool to open EVERY contact-sheet image listed below (they are PNG/JPEG files; you must actually look at them). Each tile is a frame sampled from one shot, labelled with the shot number and id.
+const REVIEW_PROMPT = `You are reviewing a rendered educational music video before a human approves it. Inspect EVERY contact-sheet image listed below (they are PNG/JPEG files; you must actually look at them). Each tile is a frame sampled from one shot, labelled with the shot number and id.
 
 Judge what you see, not what the storyboard intended:
 - layout: overlapping or clipped text, labels colliding with headlines, elements off screen, unbalanced or empty compositions
@@ -271,17 +271,18 @@ export async function qaStage(ctx: RunCtx): Promise<StageResult> {
     sheets[format] = contactSheet(qaDir, format, frames.filter((f) => f.format === format && f.pct === 0.5));
   }
 
-  // Optional bounded Claude review of the sheets (uses the subscription).
+  // Optional bounded review of the sheets through the selected AI provider.
   let review: QaReport["review"] = null;
   if (ctx.visualReview && Object.keys(sheets).length) {
-    console.log("  asking Claude to inspect the contact sheets");
+    console.log(`  asking ${ctx.settings.provider} to inspect the contact sheets`);
     const files = Object.values(sheets).map((s) => join(qaDir, s));
     const props = (propsBy.main ?? propsBy.short)!;
     const shotList = (Object.entries(propsBy) as ["main" | "short", RenderProps][]).map(([f, p]) => `${f}:\n${p.spec.shots.map((s, i) => `${i + 1}. ${s.id} [${s.visual.type}] ${s.narration ?? s.lyric ?? ""}`).join("\n")}`).join("\n");
-    const r = await claudeJson<{ inspected: { file: string; description: string }[]; overall: string; teaches: string; findings: { shot: string; severity: "fail" | "warn"; category: string; problem: string; fix: string }[] }>(
+    const r = await aiJson<{ inspected: { file: string; description: string }[]; overall: string; teaches: string; findings: { shot: string; severity: "fail" | "warn"; category: string; problem: string; fix: string }[] }>(
       `${REVIEW_PROMPT}\n\nLearning goal: ${props.spec.brief?.learningGoal ?? props.spec.title}\n\nShots:\n${shotList}\n\nContact sheets:\n${files.map((f) => `- ${f}`).join("\n")}`,
       {
-        allowedTools: ["Read"],
+        allowedTools: ctx.settings.provider === "claude" ? ["Read"] : undefined,
+        imagePaths: ctx.settings.provider === "chatgpt" ? files : undefined,
         step: "visualReview",
         label: "visual review",
         check: (x) => {
@@ -293,7 +294,7 @@ export async function qaStage(ctx: RunCtx): Promise<StageResult> {
     );
     const ids = new Set(Object.values(propsBy).flatMap((p) => p!.spec.shots.map((s) => s.id)));
     review = {
-      model: "claude",
+      model: ctx.settings.provider,
       inspected: r.inspected.map((i) => `${i.file}: ${i.description}`),
       overall: r.overall,
       teaches: r.teaches,
@@ -305,7 +306,7 @@ export async function qaStage(ctx: RunCtx): Promise<StageResult> {
   const fails = findings.filter((f) => f.severity === "fail").length;
   const warns = findings.filter((f) => f.severity === "warn").length;
   const status: QaReport["status"] = fails ? "fail" : warns ? "warn" : "pass";
-  const summary = `${status.toUpperCase()}: ${fails} failure(s), ${warns} warning(s) across ${Object.keys(media).join(" + ")}${review ? `; Claude review: teaches ${review.teaches}` : ""}`;
+  const summary = `${status.toUpperCase()}: ${fails} failure(s), ${warns} warning(s) across ${Object.keys(media).join(" + ")}${review ? `; ${review.model} review: teaches ${review.teaches}` : ""}`;
   const report: QaReport = { candidate: cand.id, at: new Date().toISOString(), status, summary, findings, media, sheets, frames, review };
   writeJson(join(qaDir, "report.json"), report);
   updateState(ctx.slug, (s) => {

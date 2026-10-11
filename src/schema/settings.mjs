@@ -6,14 +6,15 @@
 // The file only ever contains values an admin saved. Missing or malformed
 // content falls back to DEFAULT_SETTINGS (with a warning), never to a guess.
 
-export const SETTINGS_VERSION = 1;
+export const SETTINGS_VERSION = 2;
+export const AI_PROVIDERS = Object.freeze(["claude", "chatgpt"]);
 
 /** Landscape ("main", 16:9) and Short ("short", 9:16). */
 export const FORMATS = ["main", "short"];
 export const FORMAT_LABEL = { main: "Landscape (16:9)", short: "Short (9:16)" };
 
 /**
- * Every Claude call in the pipeline, one row per step, so model and reasoning
+ * Every provider call in the pipeline, one row per step, so model and reasoning
  * effort can be tuned where it pays. Project rule: Sonnet is the ceiling (no
  * Opus); Haiku is the cheap option for mechanical steps.
  * `why` is the rationale behind the default and is shown in the admin panel.
@@ -39,17 +40,21 @@ export const isAllowedModel = (m) => typeof m === "string" && (MODEL_CHOICES.inc
 
 export const DEFAULT_SETTINGS = Object.freeze({
   version: SETTINGS_VERSION,
-  models: Object.freeze({
-    research: Object.freeze({ model: "sonnet", effort: "high" }),
-    outline: Object.freeze({ model: "sonnet", effort: "medium" }),
-    script: Object.freeze({ model: "sonnet", effort: "high" }),
-    scriptFix: Object.freeze({ model: "sonnet", effort: "medium" }),
-    review: Object.freeze({ model: "sonnet", effort: "high" }),
-    factcheck: Object.freeze({ model: "sonnet", effort: "medium" }),
-    revise: Object.freeze({ model: "sonnet", effort: "low" }),
-    direct: Object.freeze({ model: "sonnet", effort: "low" }),
-    repair: Object.freeze({ model: "sonnet", effort: "low" }),
-    visualReview: Object.freeze({ model: "sonnet", effort: "medium" }),
+  provider: "claude",
+  providers: Object.freeze({
+    claude: Object.freeze({ models: Object.freeze({
+      research: Object.freeze({ model: "sonnet", effort: "high" }),
+      outline: Object.freeze({ model: "sonnet", effort: "medium" }),
+      script: Object.freeze({ model: "sonnet", effort: "high" }),
+      scriptFix: Object.freeze({ model: "sonnet", effort: "medium" }),
+      review: Object.freeze({ model: "sonnet", effort: "high" }),
+      factcheck: Object.freeze({ model: "sonnet", effort: "medium" }),
+      revise: Object.freeze({ model: "sonnet", effort: "low" }),
+      direct: Object.freeze({ model: "sonnet", effort: "low" }),
+      repair: Object.freeze({ model: "sonnet", effort: "low" }),
+      visualReview: Object.freeze({ model: "sonnet", effort: "medium" }),
+    }) }),
+    chatgpt: Object.freeze({ models: Object.freeze(Object.fromEntries(MODEL_STEPS.map((st) => [st.id, Object.freeze({ model: "", effort: "medium" })]))) }),
   }),
   formats: Object.freeze({
     main: Object.freeze({ targetSeconds: 420, minSeconds: 300, maxSeconds: 600 }),
@@ -85,6 +90,7 @@ const clone = (v) => JSON.parse(JSON.stringify(v));
 export function validateSettings(s) {
   const p = [];
   if (!s || typeof s !== "object" || Array.isArray(s)) return ["Settings must be a JSON object"];
+  if (!AI_PROVIDERS.includes(s.provider)) p.push(`provider must be one of ${AI_PROVIDERS.join(" or ")}`);
   if (!s.formats || typeof s.formats !== "object") p.push("formats is required");
   else
     for (const f of FORMATS) {
@@ -101,17 +107,26 @@ export function validateSettings(s) {
       if (isNum(x.targetSeconds) && isNum(x.maxSeconds) && x.targetSeconds > x.maxSeconds) p.push(`${label}: target (${fmt(x.targetSeconds)}) is longer than the maximum (${fmt(x.maxSeconds)})`);
       if (isNum(x.maxSeconds) && x.maxSeconds > 3 * 3600) p.push(`${label}: maximum must be at most 3 hours`);
     }
-  if (s.models != null) {
-    if (typeof s.models !== "object" || Array.isArray(s.models)) p.push("models must be an object");
-    else
-      for (const st of MODEL_STEPS) {
-        const m = s.models[st.id];
+  if (!s.providers || typeof s.providers !== "object" || Array.isArray(s.providers)) p.push("providers is required");
+  else {
+    const claude = s.providers.claude?.models;
+    if (!claude || typeof claude !== "object" || Array.isArray(claude)) p.push("Claude model settings are required");
+    else for (const st of MODEL_STEPS) {
+        const m = claude[st.id];
         if (!m || typeof m !== "object") p.push(`${st.label}: model settings are missing`);
         else {
           if (!isAllowedModel(m.model)) p.push(`${st.label}: model must be ${MODEL_CHOICES.join(" or ")} (Opus is not allowed)`);
           if (!EFFORT_LEVELS.includes(m.effort)) p.push(`${st.label}: effort must be one of ${EFFORT_LEVELS.join(", ")}`);
         }
       }
+    const chatgpt = s.providers.chatgpt?.models;
+    if (!chatgpt || typeof chatgpt !== "object" || Array.isArray(chatgpt)) p.push("ChatGPT model settings are required");
+    else for (const st of MODEL_STEPS) {
+      const model = chatgpt[st.id]?.model;
+      if (typeof model !== "string") p.push(`${st.label}: ChatGPT model must be a string`);
+      else if (model && !/^[a-zA-Z0-9._-]{1,120}$/.test(model)) p.push(`${st.label}: ChatGPT model id is invalid`);
+      else if (s.provider === "chatgpt" && !model) p.push(`${st.label}: choose an available ChatGPT plan model`);
+    }
   }
   p.push(...validateBudgets(s.budgets));
   const n = s.narration;
@@ -168,16 +183,24 @@ export function normalizeBudgets(b) {
 /** The fields an admin can save, in canonical shape (unknown keys dropped). */
 export function normalizeSettings(s) {
   const pick = (x) => ({ targetSeconds: x?.targetSeconds, minSeconds: x?.minSeconds, maxSeconds: x?.maxSeconds });
+  // Legacy `models` were Claude CLI choices. Preserve them under the Claude
+  // branch; a migration never drops or reinterprets these values.
+  const claudeModels = s?.providers?.claude?.models ?? s?.models;
+  const chatgptModels = s?.providers?.chatgpt?.models;
   return {
     version: SETTINGS_VERSION,
+    provider: s?.provider ?? DEFAULT_SETTINGS.provider,
+    providers: {
+      claude: { models: Object.fromEntries(MODEL_STEPS.map((st) => [st.id, { ...DEFAULT_SETTINGS.providers.claude.models[st.id], ...pickModel(claudeModels?.[st.id]) }])) },
+      chatgpt: { models: Object.fromEntries(MODEL_STEPS.map((st) => [st.id, { ...DEFAULT_SETTINGS.providers.chatgpt.models[st.id], ...pickChatGptModel(chatgptModels?.[st.id]) }])) },
+    },
     formats: { main: pick(s?.formats?.main), short: pick(s?.formats?.short) },
     narration: { wordsPerMinute: s?.narration?.wordsPerMinute, targetTolerance: s?.narration?.targetTolerance },
     budgets: normalizeBudgets(s?.budgets),
-    // Model choices are optional input: any step not given keeps its default.
-    models: Object.fromEntries(MODEL_STEPS.map((st) => [st.id, { ...DEFAULT_SETTINGS.models[st.id], ...pickModel(s?.models?.[st.id]) }])),
   };
 }
 const pickModel = (x) => Object.fromEntries(["model", "effort"].filter((k) => x && k in x).map((k) => [k, x[k]]));
+const pickChatGptModel = (x) => Object.fromEntries(["model", "effort"].filter((k) => x && k in x).map((k) => [k, x[k]]));
 
 /**
  * Effective settings from whatever was read from disk (possibly null, legacy
@@ -198,6 +221,8 @@ export function resolveSettings(raw) {
       short: { ...DEFAULT_SETTINGS.formats.short, ...(raw.formats?.short ?? {}) },
     },
     narration: { ...DEFAULT_SETTINGS.narration, ...(raw.narration ?? {}) },
+    provider: raw.provider,
+    providers: raw.providers,
     models: raw.models,
     budgets: raw.budgets,
   });
@@ -207,7 +232,7 @@ export function resolveSettings(raw) {
     return { settings: clone(DEFAULT_SETTINGS), source: "defaults", warnings };
   }
   // Models are optional in the file: an older file without them is not "partial".
-  const partial = FORMATS.some((f) => !raw.formats?.[f]) || !raw.narration;
+  const partial = FORMATS.some((f) => !raw.formats?.[f]) || !raw.narration || !raw.providers;
   if (partial) warnings.push("config/settings.json is missing some sections; defaults fill the gaps");
   return { settings: merged, source: partial ? "file+defaults" : "file", warnings };
 }

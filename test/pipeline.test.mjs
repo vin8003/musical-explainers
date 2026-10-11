@@ -139,7 +139,7 @@ test("changing reviewer settings invalidates reviews only", () => {
   assert.equal(sb.run(["--to", "review"]).code, 0);
   const before = sb.calls().length;
   const settings = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
-  settings.models.review.model = "haiku";
+  settings.providers.claude.models.review.model = "haiku";
   mkdirSync(join(sb.data, "config"), { recursive: true });
   writeFileSync(join(sb.data, "config/settings.json"), JSON.stringify(settings));
   assert.equal(sb.status().stages.review.status, "stale");

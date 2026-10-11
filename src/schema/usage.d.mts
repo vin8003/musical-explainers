@@ -21,6 +21,7 @@ export type Totals = {
 export type LimitStatus = { scope: "run" | "stage"; stage: string | null; metric: string; label: string; limit: number; used: number | null; remaining: number | null; pct: number | null; state: "ok" | "warning" | "exceeded" | "unknown"; lowerBound: boolean };
 export type BlockInfo = { budget: string; limit: number; used: number | null; scope: string; stage: string; reason: string };
 export declare const USAGE_VERSION: number;
+export declare function budgetsForProvider<T>(budgets: T, provider?: string): T;
 export declare function normalizeCliUsage(envelope: unknown): Usage;
 export declare function unknownUsage(): Usage;
 export declare function dedupeLedger<T extends { callId: string }>(rows: T[]): T[];

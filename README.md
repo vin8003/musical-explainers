@@ -1,8 +1,8 @@
 # musical-explainers
 
-A YouTube channel of musical explainer videos, produced mostly by Claude with a few minutes of human review per video.
+A YouTube channel of musical explainer videos, produced with a selectable Claude or ChatGPT provider and a few minutes of human review per video.
 
-The core idea: **Claude writes and directs; code renders.** Instead of asking an AI video generator for clips (characters drift, diagrams come out wrong, every clip costs money), Claude writes a fact-checked script, then a structured storyboard, and a library of code-driven scene systems ([Remotion](https://www.remotion.dev/)) renders it. Optional Blender clips add real 3D where depth genuinely helps. Every render is reproducible, costs nothing extra, and can be checked and fixed automatically.
+The core idea: **AI researches, writes and directs; code renders.** Choose Claude or ChatGPT in Settings. Instead of asking an AI video generator for clips (characters drift, diagrams come out wrong, every clip costs money), the selected provider writes a fact-checked script, then a structured storyboard, and a library of code-driven scene systems ([Remotion](https://www.remotion.dev/)) renders it. Optional Blender clips add real 3D where depth genuinely helps. Every render is reproducible, costs nothing extra, and can be checked and fixed automatically.
 
 ## What it does today
 
@@ -10,7 +10,7 @@ The core idea: **Claude writes and directs; code renders.** Instead of asking an
 - **Twelve scene systems** (`src/shots/`): title cards, kinetic typography, network diagrams with packets hopping along routes, a file cut into packets and reassembled, anatomy close-ups with callouts, parallax journeys, flows, quantity comparisons, two-column comparisons, timelines, numbered steps and a mascot character shot, plus `scene3d` for Blender clips with a 2D fallback. They share one art direction (`src/theme.ts`: four colour "worlds", Avenir Next, one easing language), safe areas and text fitting for 16:9 and 9:16 (`src/layout.ts`), and a code-drawn illustration library (`src/assets/icons.tsx`).
 - **Music and narration that drive the edit.** Narration (macOS `say`) is measured first; shots are cut to whole bars of the song; a built-in composer arranges music on that timeline by section; the chorus is sung (pitch-shifted speech) on the beat with the words landing on screen at the same frames; SFX mark transitions and selected accents; the mix is ducked and normalised to -14 LUFS. All local and free. ElevenLabs is an optional, off-by-default provider.
 - **A staged, recoverable pipeline** (`npm run pipeline`): research (qualified topic, sourced dossier), per-format outline, independent landscape and Short scripts, an editorial review gate, fact-check (with web search and bounded revision, re-run only for new text, including diagram labels), direction, assets, audio, render, QA, packaging. Landscape and Short durations are configured in the admin panel (Settings) and enforced against measured audio and the rendered files. Status is computed from files; stale work re-runs, fresh work is cached; locks, cancellation, archives and immutable render candidates keep good output safe.
-- **Automated QA on the actual files**: streams, durations, loudness, silence, sampled frames (blank, frozen, repeated, touching the edge, missing assets), text fit, contact sheets, and an optional Claude review of the frames.
+- **Automated QA on the actual files**: streams, durations, loudness, silence, sampled frames (blank, frozen, repeated, touching the edge, missing assets), text fit, contact sheets, and an optional selected-provider review of the frames.
 - **An admin panel** (`npm run admin`) that runs all of it from the browser.
 
 See [docs/pipeline.md](docs/pipeline.md) for every stage, file, flag and recovery step.
@@ -19,7 +19,6 @@ See [docs/pipeline.md](docs/pipeline.md) for every stage, file, flag and recover
 
 ```bash
 npm install
-claude --version          # Claude Code CLI, logged in with your subscription (no API key)
 npm run admin             # http://localhost:4321: the production cockpit
 npm run pipeline -- how-does-the-internet-work            # continue production from wherever it is
 npm run pipeline -- "Why is the sky blue?" --fresh        # new video from a backlog topic
@@ -27,7 +26,7 @@ npm run studio            # Remotion Studio, for working on scene systems
 npm test && npm run typecheck
 ```
 
-Requirements: Node 18+, ffmpeg on PATH, the `claude` CLI for script/fact-check/direction, macOS `say` for the default narration (without it, videos get music only and are marked "partial audio"). Optional: Blender 4.2+ for 3D clips (found at `/Applications/Blender.app` or via `BLENDER_BIN`).
+Requirements: Node 18+, ffmpeg on PATH, and macOS `say` for the default narration (without it, videos get music only and are marked "partial audio"). Claude selection requires the Claude Code CLI logged into its subscription. ChatGPT selection uses **Continue with ChatGPT** in Settings and eligible ChatGPT plan usage; it does not use an API key. Optional: Blender 4.2+ for 3D clips (found at `/Applications/Blender.app` or via `BLENDER_BIN`).
 
 Start the panel with the same Node that installed `node_modules` (native arm64 on Apple Silicon, e.g. `/opt/homebrew/bin/npm run admin`); the panel warns if they don't match. If you see an esbuild "installed for another platform" error, reinstall `node_modules` from a terminal where `node -p process.arch` prints `arm64`.
 
@@ -36,13 +35,13 @@ Start the panel with the same Node that installed `node_modules` (native arm64 o
 `npm run admin` serves a local-only panel (127.0.0.1, same-origin writes only, no extra dependencies). It shells out to the pipeline, one job at a time, and never re-implements pipeline rules in the browser.
 
 - **Videos** and **Backlog**: every topic with a status chip per stage (up to date, out of date, failed, not done) and its sound status; add, edit, reorder and re-status topics.
-- **Settings**: target, minimum and maximum duration per format (minutes and seconds), narration rate and tolerance; validated, saved to `config/settings.json`, snapshotted per job.
+- **Settings**: provider selector, per-provider model and supported reasoning settings, ChatGPT connection, target/minimum/maximum duration per format, and narration rate/tolerance; validated, saved to `config/settings.json`, snapshotted per job.
 - **Research & review**: the dossier (claims, sources, which were opened), outlines, and editorial rubric scores and findings per format.
 - **Overview**: the eleven stages with their real status and reason, the last successful checkpoint, errors with hints, and a Run button per stage; "Continue production" runs whatever is missing or stale; "Fresh script" archives and restarts.
 - **Storyboard**: the shot list with thumbnails from the latest render, timing in bars, visual type, section and Short membership; edit any shot (or the raw JSON), validate, save (the previous version is archived); select shots to redirect with notes or to preview at half resolution.
 - **Fact-check**: every spoken and on-screen claim with verdict, correction and sources.
 - **Assets & audio**: providers, per-cut audio status (full, partial, silent), loudness, licences, players for the mix and the music; illustration and licence report; Blender availability and 3D clip status with a preview.
-- **Quality**: the QA report per candidate, contact sheets, frames per shot, and Claude's review when requested.
+- **Quality**: the QA report per candidate, contact sheets, frames per shot, and the selected provider's review when requested.
 - **Review**: pick a candidate, compare it side by side with another (linked players), approve it or reject it with notes. Preview renders can't be approved; approved candidates are never deleted.
 - **Logs** and **Jobs**: live logs, progress (including Blender frames), cancel.
 
@@ -50,7 +49,7 @@ Start the panel with the same Node that installed `node_modules` (native arm64 o
 
 | Item | Cost |
 |---|---|
-| Script, fact-check, direction, optional frame review | Your Claude Code subscription via `claude -p` (usage limits apply; no API key) |
+| Script, fact-check, direction, optional frame review | Claude Code subscription via `claude -p`, or eligible ChatGPT plan usage via Sign in with ChatGPT (plan limits apply; no API key) |
 | Narration, music, sung chorus, SFX | Free and local (macOS `say`, built-in composer, ffmpeg) |
 | Rendering | Free, local (Remotion; optional Blender) |
 | ElevenLabs voice | Optional and off by default; paid per character if you enable it |

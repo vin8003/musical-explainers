@@ -43,6 +43,7 @@ test("every Claude call lands in the ledger with known usage; stage and run summ
   const rows = sb.ledger();
   assert.equal(rows.length, 1);
   assert.equal(rows[0].stage, "research");
+  assert.equal(rows[0].provider, "claude");
   assert.equal(rows[0].usage.status, "known");
   assert.equal(rows[0].status, "ok");
   assert.equal(rows[0].requestedModel, "sonnet");
@@ -56,9 +57,23 @@ test("every Claude call lands in the ledger with known usage; stage and run summ
   const again = sb.run(["--to", "research"]);
   assert.equal(again.code, 0, again.out);
   assert.match(again.out, /up to date/);
-  assert.match(again.out, /\[usage\] this run: no Claude calls/);
+  assert.match(again.out, /\[usage\] this run: no AI calls/);
   assert.equal(sb.ledger().length, 1);
   assert.equal(sb.calls().length, 1);
+});
+
+test("a ChatGPT-selected run fails before model work when disconnected and never launches Claude", () => {
+  const sb = sandbox();
+  const settings = clone(DEFAULT_SETTINGS);
+  settings.provider = "chatgpt";
+  for (const model of Object.values(settings.providers.chatgpt.models)) model.model = "not-used-without-account";
+  mkdirSync(join(sb.data, "config"), { recursive: true });
+  writeFileSync(sb.settingsPath, JSON.stringify(settings));
+  const r = sb.run(["--stage", "research"], { ANTHROPIC_API_KEY: "must-not-be-read", CLAUDE_MODEL: "haiku" });
+  assert.notEqual(r.code, 0);
+  assert.match(r.out, /ChatGPT is disconnected|sign in with ChatGPT/i);
+  assert.equal(sb.calls().length, 0, "the scripted Claude CLI was not invoked as a fallback");
+  assert.equal(sb.ledger().length, 0, "preflight failure did not create a model-call record");
 });
 
 test("missing usage metadata is reported as unknown in the terminal, never as zero", () => {
@@ -95,7 +110,7 @@ test("a repair the validator still rejects fails the stage (invalid output is ne
   const sb = sandbox();
   const r = sb.run(["--stage", "research"], { FAKE_MODE: "bad-claim,bad-claim-always" });
   assert.notEqual(r.code, 0);
-  assert.match(r.out, /invalid: Claude's output is still invalid after 1 repair/);
+  assert.match(r.out, /invalid: The selected provider's output is still invalid after 1 repair/);
   assert.equal(sb.ledger().length, 2);
   assert.ok(!existsSync(join(sb.data, `specs/${SLUG}.research.json`)));
 });
@@ -104,7 +119,7 @@ test("a budget stop is clean: no call is started, finished work is kept, the rea
   const sb = sandbox({ run: { maxCalls: 2 } });
   const r = sb.run(["--to", "outline"]);
   assert.notEqual(r.code, 0);
-  assert.match(r.out, /\[pipeline\] budget: Usage budget reached; no Claude call was started/);
+  assert.match(r.out, /\[pipeline\] budget: Usage budget reached; no AI call was started/);
   assert.match(r.out, /run\.maxCalls \(limit 2, used 2, stage outline\)/);
   const callsAtStop = sb.calls().length;
   assert.equal(callsAtStop, 2, "research + the first outline; the second outline was never launched");
@@ -320,8 +335,8 @@ test("UI: the job strip shows unknown usage as unknown and flags limits; the set
   assert.match(html, /in unknown · out unknown/);
   assert.match(html, /est\. cost unavailable/);
   assert.doesNotMatch(html, /out 0/);
-  const hot = strip({ totals: unknown, limits: [{ scope: "run", stage: null, label: "Claude calls", pct: 100, state: "exceeded" }], stop: { stage: "script", blocks: [{ budget: "run.maxCalls" }] } });
-  assert.match(hot, /limit|Claude calls 100%/);
+  const hot = strip({ totals: unknown, limits: [{ scope: "run", stage: null, label: "AI calls", pct: 100, state: "exceeded" }], stop: { stage: "script", blocks: [{ budget: "run.maxCalls" }] } });
+  assert.match(hot, /limit|AI calls 100%/);
   assert.match(hot, /Stopped by usage budget/);
   assert.equal(strip(null), "");
   ctx.__b = DEFAULT_SETTINGS.budgets;

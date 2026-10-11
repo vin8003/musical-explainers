@@ -1,5 +1,5 @@
 // Usage accounting, token-conscious repair and budget enforcement.
-// Pure rules are tested directly; Claude calls run through the real scripts/claude.ts
+// Pure rules are tested directly; Provider calls run through the real scripts/ai.ts
 // against a scripted stand-in CLI (test/fixtures/scripted-claude.mjs). No network, no model.
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
@@ -131,12 +131,12 @@ test("budget settings: empty means unrestricted, zero is a real zero, invalid is
   // A settings file from before budgets existed: valid, unrestricted, repair default 1.
   const legacy = clone(DEFAULT_SETTINGS);
   delete legacy.budgets;
-  delete legacy.models.repair;
+  delete legacy.providers.claude.models.repair;
   const r = resolveSettings(legacy);
   assert.equal(r.source, "file");
   assert.equal(r.settings.budgets.run.maxCalls, null);
   assert.equal(r.settings.budgets.repair.maxAttemptsPerOperation, 1);
-  assert.equal(r.settings.models.repair.effort, "low");
+  assert.equal(r.settings.providers.claude.models.repair.effort, "low");
 });
 
 // ---------- budget decisions (pure) ----------
@@ -198,7 +198,7 @@ test("cost limits are only enforced on cost the CLI reported", () => {
   assert.equal(noCost.warnings.length, 1, "cost unknown: warned, not assumed zero");
 });
 
-// ---------- repair through claudeJson ----------
+// ---------- repair through aiJson ----------
 
 const R = (v) => ({ result: JSON.stringify(v) });
 const REPAIR_ROW = (rows) => rows.filter((r) => r.repair);

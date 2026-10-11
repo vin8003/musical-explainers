@@ -17,10 +17,13 @@ export type Budgets = {
 };
 export type Settings = {
   version: number;
+  provider: "claude" | "chatgpt";
+  providers: {
+    claude: { models: Record<ModelStepId, ModelChoice> };
+    chatgpt: { models: Record<ModelStepId, ModelChoice> };
+  };
   formats: Record<Format, FormatDuration>;
   narration: { wordsPerMinute: number; targetTolerance: number };
-  /** Model and reasoning effort per Claude call. */
-  models: Record<ModelStepId, ModelChoice>;
   budgets: Budgets;
 };
 export type DurationCheck = { verdict: "ok" | "off-target" | "short" | "long" | "unknown"; message: string };
@@ -28,6 +31,7 @@ export type DurationCheck = { verdict: "ok" | "off-target" | "short" | "long" | 
 export declare const SETTINGS_VERSION: number;
 export declare const FORMATS: Format[];
 export declare const FORMAT_LABEL: Record<Format, string>;
+export declare const AI_PROVIDERS: readonly ("claude" | "chatgpt")[];
 export declare const DEFAULT_SETTINGS: Settings;
 export declare function validateSettings(s: unknown): string[];
 export declare function normalizeSettings(s: unknown): Settings;

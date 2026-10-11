@@ -13,7 +13,7 @@
 //   npm run pipeline -- <slug> --status                     print stage status as JSON
 //
 // Other flags: --preview (half-res render), --formats main,short, --force,
-// --allow-missing-assets, --visual-review (Claude inspects contact sheets),
+// --allow-missing-assets, --visual-review (the selected provider inspects contact sheets),
 // --fix-rounds N (automatic QA fix rounds, default 1), --duration-rounds N
 // (targeted script revisions when measured audio is outside the configured
 // range, default 1).
@@ -24,6 +24,7 @@ import { readFileSync } from "node:fs";
 import { lock, paths, PipelineError, readJson } from "./core/files";
 import { fmt, FORMAT_LABEL, wordsToTarget } from "../src/schema/settings.mjs";
 import { runSettings } from "./core/settings";
+import { listChatGPTModels } from "./providers/chatgpt.mjs";
 import { emit, loadState, setStage, Stage, STAGES, updateState } from "./core/state";
 import { newRunId, runRows, runSummaryLine, setUsageContext, stageSummaryLine } from "./core/usage";
 import { computeStatus } from "./core/status";
@@ -122,6 +123,11 @@ async function main() {
     const s = computeStatus(slug, { settings: snap.settings, title, topic });
     console.log(JSON.stringify({ slug, stages: s.stages, problems: s.problems, lint: s.lint, formats: s.formats }, null, 2));
     return;
+  }
+  if (snap.settings.provider === "chatgpt") {
+    const available = await listChatGPTModels();
+    const missing = Object.entries(snap.settings.providers.chatgpt.models).filter(([, value]) => !available.some((m) => m.id === value.model)).map(([step]) => step);
+    if (missing.length) throw new PipelineError(`ChatGPT plan model configuration is unavailable for ${missing.join(", ")}; refresh the model choices in Settings.`, "config");
   }
   // Usage run: a budget stop or failure keeps the run (resume restores its totals from the ledger);
   // --fresh or a finished run starts a new one with new counters.

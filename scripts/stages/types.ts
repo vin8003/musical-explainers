@@ -20,7 +20,7 @@ export type RunCtx = {
   preview: boolean;
   formats: Format[];
   allowMissingAssets: boolean;
-  /** Ask Claude to look at the contact sheets (uses subscription). */
+  /** Ask the selected provider to review contact sheets. */
   visualReview: boolean;
   /** Automatic fix rounds after QA (default 1). */
   fixRounds: number;

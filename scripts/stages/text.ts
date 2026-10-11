@@ -8,7 +8,7 @@ import {
   ANCHORS, CAMERA_MOVES, ICONS, JOURNEY_SCENES, SCENES_3D, SFX, TRANSITIONS, lintSpec, migrateSpec, textOf, validateSpec,
 } from "../../src/schema/storyboard.mjs";
 import type { Shot, VideoSpec } from "../../src/schema/storyboard.mjs";
-import { claudeJson } from "../claude";
+import { aiJson } from "../ai";
 import { archive, paths, PipelineError, readJson, ROOT, writeJson } from "../core/files";
 import { evidenceForClaims } from "../../src/schema/evidence.mjs";
 import { PROMPT_VERSIONS } from "../../src/schema/editorial.mjs";
@@ -139,7 +139,7 @@ export async function factcheckStage(ctx: RunCtx): Promise<StageResult> {
     console.log(`  checking ${todo.length} new or flagged item(s) with web search${round ? ` (after revision ${round})` : ""}`);
     const subset = evidence ? evidenceForClaims(evidence, [...new Set(todo.flatMap((item) => item.claimIds))]) : null;
     const evidenceContext = subset ? `\n\nResearch evidence for context only; independently verify each item:\n${JSON.stringify(subset)}` : "";
-    const reply = await claudeJson<{ claims: Claim[] }>(`${prompt("factcheck")}${evidenceContext}\n\nItems:\n${JSON.stringify(todo.map((t) => ({ shot: t.shot, text: t.text, evidenceIds: t.claimIds })), null, 1)}`, {
+    const reply = await aiJson<{ claims: Claim[] }>(`${prompt("factcheck")}${evidenceContext}\n\nItems:\n${JSON.stringify(todo.map((t) => ({ shot: t.shot, text: t.text, evidenceIds: t.claimIds })), null, 1)}`, {
       allowedTools: ["WebSearch", "WebFetch"],
       step: "factcheck",
       label: "factcheck",
@@ -176,12 +176,12 @@ export async function factcheckStage(ctx: RunCtx): Promise<StageResult> {
   }
 }
 
-/** Targeted revision: Claude returns only the shots it changed, which are merged and validated. */
+/** Targeted revision: the selected provider returns only changed shots, which are merged and validated. */
 export async function reviseSpec(slug: string, before: VideoSpec, flagged: Claim[], format: Format, claims: unknown): Promise<VideoSpec> {
   const limit = format === "short" ? 32 : 45;
   const targetIds = new Set(flagged.map((claim) => claim.shot).filter(Boolean));
   const affected = before.shots.filter((shot) => targetIds.has(shot.id));
-  const reply = await claudeJson<{ shots: Shot[] }>(
+  const reply = await aiJson<{ shots: Shot[] }>(
     `${prompt("revise")}\n\nPer-shot narration limit: ${limit} words.\n\nFlagged claims:\n${JSON.stringify(flagged.map((c) => ({ shot: c.shot, evidenceIds: c.evidenceIds, claim: c.claim, verdict: c.verdict, correction: c.correction, note: c.note })), null, 2)}${claims ? `\n\nRelevant evidence and qualifications:\n${JSON.stringify(claims)}` : ""}\n\nAffected segments only:\n${JSON.stringify(affected)}`,
     {
       step: "revise",
@@ -251,12 +251,12 @@ async function directionContext(slug: string, spec: VideoSpec, format: Format) {
   ].join("\n");
 }
 
-export function mergeDirection(spec: VideoSpec, reply: DirectReply, targets: string[]): VideoSpec {
+export function mergeDirection(spec: VideoSpec, reply: DirectReply, targets: string[], provider: string = "claude"): VideoSpec {
   const byId = new Map(reply.shots.map((s) => [s.id, s]));
   return {
     ...spec,
     world: reply.world ?? spec.world,
-    direction: { status: "directed", at: new Date().toISOString(), by: "claude" },
+    direction: { status: "directed", at: new Date().toISOString(), by: provider },
     shots: spec.shots.map((s) => {
       const d = byId.get(s.id);
       if (!d || !targets.includes(s.id)) return s;
@@ -297,22 +297,22 @@ export async function directStage(ctx: RunCtx): Promise<StageResult> {
     const context = await directionContext(ctx.slug, spec, g.format);
     for (let i = 0; i < targets.length; i += DIRECT_BATCH) {
       const batch = targets.slice(i, i + DIRECT_BATCH);
-      console.log(`  directing ${fmtName} shots ${i + 1}-${i + batch.length} of ${targets.length} with claude -p`);
+      console.log(`  directing ${fmtName} shots ${i + 1}-${i + batch.length} of ${targets.length} with ${ctx.settings.provider}`);
       const current = spec;
       // Later batches see earlier directed shots as "current storyboard" for continuity.
-      const reply = await claudeJson<DirectReply>(directorPrompt(current, batch, ctx.notes, context), {
+      const reply = await aiJson<DirectReply>(directorPrompt(current, batch, ctx.notes, context), {
         step: "direct",
         label: `direct ${fmtName}`,
         check: (r) => {
           if (!Array.isArray(r?.shots)) return ["shots must be a list"];
           const missing = batch.filter((t) => !r.shots.some((s) => s.id === t));
-          const merged = mergeDirection(current, r, batch);
+          const merged = mergeDirection(current, r, batch, ctx.settings.provider);
           return [...missing.map((m) => `missing shot ${m}`), ...validateSpec(merged, { slug: ctx.slug }).filter((x) => batch.some((t) => x.includes(`(${t})`)) || !x.startsWith("shot "))];
         },
       });
-      spec = mergeDirection(current, reply, batch);
+      spec = mergeDirection(current, reply, batch, ctx.settings.provider);
       // Unfinished batches keep the storyboard a draft, so an interrupted run resumes.
-      if (i + DIRECT_BATCH < targets.length && !ctx.shots?.length) spec = { ...spec, direction: { ...spec.direction!, status: "draft", by: "claude (partial)" } };
+      if (i + DIRECT_BATCH < targets.length && !ctx.shots?.length) spec = { ...spec, direction: { ...spec.direction!, status: "draft", by: `${ctx.settings.provider} (partial)` } };
       if (i + DIRECT_BATCH >= targets.length && !ctx.shots?.length) spec = { ...spec, direction: { ...spec.direction!, status: "directed", inputHash, promptVersion: PROMPT_VERSIONS.direct } };
       saveSpec(ctx.slug, spec, `before-direction-${g.format}`, g.file);
     }

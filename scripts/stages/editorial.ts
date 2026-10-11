@@ -1,7 +1,7 @@
 // Research-first editorial stages. Research informs writing, never the other
 // way round:
 //
-//   research  qualification + angle + evidence dossier + thesis  (one claude call, web tools)
+//   research  qualification + angle + evidence dossier + thesis  (one provider call, web search)
 //   outline   per format: how the viewer's understanding changes   (one call per format)
 //   script    per format: narration/lyrics from dossier + outline   (one call per format)
 //   review    per format: independent editorial rubric, bounded revision of the script
@@ -20,7 +20,7 @@ import type { Settings } from "../../src/schema/settings.mjs";
 import { SECTIONS, validateSpec } from "../../src/schema/storyboard.mjs";
 import type { Shot, VideoSpec } from "../../src/schema/storyboard.mjs";
 import { estimateRuntime } from "../../src/schema/timeline.mjs";
-import { claudeJson } from "../claude";
+import { aiJson } from "../ai";
 import { archive, hashFile, hashOf, paths, PipelineError, readJson, writeJson } from "../core/files";
 import { loadSpec, ownSpec, prompt, saveSpec } from "./text";
 import type { Format, RunCtx, StageResult, Topic } from "./types";
@@ -58,10 +58,8 @@ const modelEnvKey = (step: string) => step.replace(/[A-Z]/g, (c) => `_${c}`).toU
 export function effectiveModelKey(settings: Settings, ...steps: string[]) {
   return Object.fromEntries(steps.map((step) => {
     const key = modelEnvKey(step);
-    return [step, {
-      model: process.env[`CLAUDE_MODEL_${key}`] || process.env.CLAUDE_MODEL || settings.models[step as keyof Settings["models"]]?.model,
-      effort: process.env[`CLAUDE_EFFORT_${key}`] || process.env.CLAUDE_EFFORT || settings.models[step as keyof Settings["models"]]?.effort,
-    }];
+    const selected = settings.providers[settings.provider].models[step as keyof Settings["providers"]["claude"]["models"]];
+    return [step, { provider: settings.provider, model: settings.provider === "claude" ? process.env[`CLAUDE_MODEL_${key}`] || process.env.CLAUDE_MODEL || selected?.model : selected?.model, effort: settings.provider === "claude" ? process.env[`CLAUDE_EFFORT_${key}`] || process.env.CLAUDE_EFFORT || selected?.effort : selected?.effort }];
   }));
 }
 export const researchInputHash = (title: string, topic?: Topic, settings?: Settings) => hashOf({ title, angle: topic?.angle ?? "", models: settings ? effectiveModelKey(settings, "research") : null, schema: 1, v: PROMPT_VERSIONS.research });
@@ -196,11 +194,11 @@ export async function researchStage(ctx: RunCtx): Promise<StageResult> {
     ctx.topic?.angle ? `Producer's hook idea (a suggestion, not a requirement; replace it if a stronger angle exists): ${ctx.topic.angle}` : "",
     ctx.topic?.notes ? `Producer notes: ${ctx.topic.notes}` : "",
   ].filter(Boolean).join("\n");
-  console.log(`  researching with claude -p (web search)`);
-  const reply = await claudeJson<Research>(brief, { allowedTools: ["WebSearch", "WebFetch"], step: "research", label: "research", check: validateResearch,
+  console.log(`  researching with ${ctx.settings.provider} (web search)`);
+  const reply = await aiJson<Research>(brief, { allowedTools: ["WebSearch", "WebFetch"], step: "research", label: "research", check: validateResearch,
     // Repairs return only the failing fields/elements, so valid claims, sources and provenance are never regenerated and nothing is searched twice.
     fieldRepair: { hint: "If a supported claim lacks an opened source, do not invent one: set its status to \"qualified\" with a qualification, or \"insufficient\" with a note.", context: (r) => `Claim ids: ${(Array.isArray(r?.claims) ? r.claims : []).map((c) => `${c?.id} (${c?.status})`).join(", ")}` },
-    repairResendsPrompt: false, timeoutMs: Number(process.env.CLAUDE_RESEARCH_TIMEOUT_MS ?? 30 * 60 * 1000) });
+    repairResendsPrompt: false, timeoutMs: ctx.settings.provider === "claude" ? Number(process.env.CLAUDE_RESEARCH_TIMEOUT_MS ?? 30 * 60 * 1000) : undefined });
   const file: ResearchFile = { ...reply, version: 1, inputHash, promptVersion: PROMPT_VERSIONS.research, at: new Date().toISOString(), topic: { slug: ctx.slug, title: ctx.title, angle: ctx.topic?.angle } };
   archive(ctx.slug, paths.research(ctx.slug), "research");
   writeJson(paths.research(ctx.slug), file);
@@ -255,8 +253,8 @@ export async function outlineStage(ctx: RunCtx): Promise<StageResult> {
       durationBrief(ctx.settings, format),
       `\n## Research and evidence\n${JSON.stringify(outlineContext(research, evidence), null, 1)}`,
     ].join("\n");
-    console.log(`  outlining the ${FORMAT_LABEL[format]} with claude -p`);
-    const reply = await claudeJson<Outline>(brief, { step: "outline", label: `outline ${format}`, check: (o) => validateOutline(o, research, ctx.settings, format), fieldRepair: { context: () => `Claim ids: ${research.claims.map((c) => c.id).join(", ")}` } });
+    console.log(`  outlining the ${FORMAT_LABEL[format]} with ${ctx.settings.provider}`);
+    const reply = await aiJson<Outline>(brief, { step: "outline", label: `outline ${format}`, check: (o) => validateOutline(o, research, ctx.settings, format), fieldRepair: { context: () => `Claim ids: ${research.claims.map((c) => c.id).join(", ")}` } });
     const entry: OutlineEntry = { ...reply, format, inputHash, researchHash: rHash, evidenceHash: eHash, durationKey: formatKey(ctx.settings, format), at: new Date().toISOString(), promptVersion: PROMPT_VERSIONS.outline };
     saveOutline(ctx.slug, format, entry);
     const b = outlineBlockers(entry);
@@ -271,7 +269,7 @@ export async function outlineStage(ctx: RunCtx): Promise<StageResult> {
 type ScriptShot = Omit<Shot, "visual" | "beatId"> & { beatId: string };
 export type ScriptReply = Omit<VideoSpec, "schemaVersion" | "shots"> & { shots: ScriptShot[] };
 
-/** Structural, evidence and runtime checks on a script reply. Problems go back to Claude once. */
+/** Structural, evidence and runtime checks on a script reply. Problems go back to the selected provider once. */
 export function checkScript(r: ScriptReply, format: Format, research: Research | null, settings: Settings, strictDuration = false, outline?: OutlineEntry): string[] {
   const p: string[] = [];
   const min = format === "short" ? 3 : 8;
@@ -395,8 +393,8 @@ async function writeScript(ctx: RunCtx, format: Format, research: ResearchFile, 
     `\n## Thesis and referenced evidence\n${JSON.stringify(scriptEvidence(research, evidence, outline), null, 1)}`,
     ...extra,
   ].filter(Boolean).join("\n");
-  console.log(`  writing the ${FORMAT_LABEL[format]} script with claude -p`);
-  let reply = await claudeJson<ScriptReply>(brief, { step: "script", label: `script ${format}`, check: (r) => checkScript(r, format, research, ctx.settings, false, outline), fieldRepair: { context: () => `Evidence claim ids: ${scriptEvidence(research, evidence, outline).evidence.claims.map((c) => c.id).join(", ")}\nOutline beat ids: ${outline.beats.map((b) => b.id).join(", ")}` } });
+  console.log(`  writing the ${FORMAT_LABEL[format]} script with ${ctx.settings.provider}`);
+  let reply = await aiJson<ScriptReply>(brief, { step: "script", label: `script ${format}`, check: (r) => checkScript(r, format, research, ctx.settings, false, outline), fieldRepair: { context: () => `Evidence claim ids: ${scriptEvidence(research, evidence, outline).evidence.claims.map((c) => c.id).join(", ")}\nOutline beat ids: ${outline.beats.map((b) => b.id).join(", ")}` } });
   // Length is checked after the structural checks so the model gets one precise, numeric retry. If it still
   // misses, the script is kept and the miss is surfaced (the editorial review judges format fit, and the
   // measured audio is the final gate) instead of failing before anyone can look at it.
@@ -420,7 +418,7 @@ async function writeScript(ctx: RunCtx, format: Format, research: ResearchFile, 
     }
     if (!localized) {
       try {
-        reply = await claudeJson<ScriptReply>(`${brief}\n\n## Local length repair was unsafe\n${miss[0]}\nPrevious segments:\n${JSON.stringify(reply.shots.map((x) => ({ id: x.id, beatId: x.beatId, section: x.section, narration: x.narration, lyric: x.lyric, claims: x.claims })), null, 1)}\nA targeted patch could not meet the required duration. Regenerate the script only as a fallback, retaining every sound segment and changing as little as necessary.`, { step: "scriptFix", label: `script ${format} (length fallback)`, callKind: "regeneration", reason: "full regeneration fallback after localized length repair was unsafe", check: (r) => checkScript(r, format, research, ctx.settings, true, outline) });
+        reply = await aiJson<ScriptReply>(`${brief}\n\n## Local length repair was unsafe\n${miss[0]}\nPrevious segments:\n${JSON.stringify(reply.shots.map((x) => ({ id: x.id, beatId: x.beatId, section: x.section, narration: x.narration, lyric: x.lyric, claims: x.claims })), null, 1)}\nA targeted patch could not meet the required duration. Regenerate the script only as a fallback, retaining every sound segment and changing as little as necessary.`, { step: "scriptFix", label: `script ${format} (length fallback)`, callKind: "regeneration", reason: "full regeneration fallback after localized length repair was unsafe", check: (r) => checkScript(r, format, research, ctx.settings, true, outline) });
       } catch (e) {
         if (!(e instanceof PipelineError) || e.kind !== "invalid") throw e;
         console.log(`  keeping the first ${FORMAT_LABEL[format]} script; its length miss will be flagged`);
@@ -543,7 +541,7 @@ async function repairScriptSegments(ctx: RunCtx, format: Format, before: VideoSp
   const allowedClaims = evidenceForClaims(evidence, claimIds);
   const segments = before.shots.filter((shot) => targets.has(shot.id)).map((shot) => ({ id: shot.id, beatId: shot.beatId, section: shot.section, purpose: shot.purpose, narration: shot.narration, lyric: shot.lyric, headline: shot.headline, claims: shot.claims, requestedFields: [...targets.get(shot.id)!] }));
   const request = { format, wordLimit: SHOT_WORD_LIMIT[format], findings: findings.filter((f) => targets.has(f.segmentId!)).map(({ segmentId, field, severity, problem, fix }) => ({ segmentId, field, severity, problem, fix })), segments, evidence: allowedClaims, relevantBeats: outline.beats.filter((beat) => segments.some((segment) => segment.beatId === beat.id)) };
-  const reply = await claudeJson<SegmentPatchReply>(`${prompt("repair-script-segments")}\n\nRepair request:\n${JSON.stringify(request, null, 1)}`, {
+  const reply = await aiJson<SegmentPatchReply>(`${prompt("repair-script-segments")}\n\nRepair request:\n${JSON.stringify(request, null, 1)}`, {
     step: "scriptFix", label: `review repair ${format}`, callKind: "regeneration", reason,
     check: (value) => {
       if (!Array.isArray(value?.patches)) return ["patches must be a list"];
@@ -601,7 +599,7 @@ export async function reviewStage(ctx: RunCtx): Promise<StageResult> {
     for (let round = 0; ; round++) {
       if (!reply) {
         console.log(`  editorial review of the ${FORMAT_LABEL[format]} (round ${round + 1})`);
-        reply = await claudeJson<ReviewReply>(reviewPrompt(spec!, format, research, evidence, outline, ctx.settings), { step: "review", label: `review ${format}`, check: (r) => validateReview(r, spec!.shots.map((s) => s.id)), fieldRepair: true });
+        reply = await aiJson<ReviewReply>(reviewPrompt(spec!, format, research, evidence, outline, ctx.settings), { step: "review", label: `review ${format}`, check: (r) => validateReview(r, spec!.shots.map((s) => s.id)), fieldRepair: true });
       }
       const normalized = stableReview(reply!);
       reply = normalized;

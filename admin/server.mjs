@@ -4,7 +4,7 @@
 //
 // Plain Node (18+), no dependencies. Serves admin/public and a small JSON API.
 // Pipeline runs shell out to `npm run pipeline` (scripts/pipeline.ts), which
-// runs Claude through the local `claude -p` CLI (subscription, no API key).
+// runs the selected provider through its subscription-backed integration.
 // Jobs run one at a time, so a batch can't blow through usage limits.
 // Stage status is computed by the pipeline itself (scripts/status.ts), so the
 // panel never re-implements its rules.
@@ -16,7 +16,9 @@ import { fileURLToPath } from "node:url";
 import { lintSpec, migrateSpec, SCENES_3D, SECTIONS, validateSpec, VISUALS, ICONS } from "../src/schema/storyboard.mjs";
 import { DEFAULT_SETTINGS, FORMAT_LABEL, normalizeSettings, resolveSettings, validateSettings } from "../src/schema/settings.mjs";
 import { PASS_RULES, RUBRIC } from "../src/schema/editorial.mjs";
-import { parseLedger, summarize } from "../src/schema/usage.mjs";
+import { budgetsForProvider, parseLedger, summarize } from "../src/schema/usage.mjs";
+import { connectChatGPT, connectionStatus, disconnectChatGPT } from "../scripts/providers/chatgpt-auth.mjs";
+import { listChatGPTModels } from "../scripts/providers/chatgpt.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 // Data (backlog, specs, settings, outputs) can live elsewhere: tests point DATA_ROOT at a temp dir.
@@ -150,13 +152,17 @@ function checkEnvironment() {
   if (!existsSync(join(ROOT, "node_modules"))) warnings.push("node_modules is missing: run npm install first.");
   else if (have.length && !have.includes(want))
     warnings.push(`This admin server runs on ${want} Node (${process.execPath}) but node_modules was installed for ${have.join(", ")}. Pipeline runs will fail. Start it with the matching Node, e.g. /opt/homebrew/bin/npm run admin, or reinstall node_modules.`);
-  const claude = spawnSync(process.env.CLAUDE_BIN ?? "claude", ["--version"], { encoding: "utf8", timeout: 15000 });
-  const claudeVersion = claude.status === 0 ? claude.stdout.trim() : null;
-  if (!claudeVersion) warnings.push("The claude CLI was not found. Install Claude Code and log in once, or set CLAUDE_BIN to its path. Script, fact-check and direction need it.");
-  if (process.env.ANTHROPIC_API_KEY) warnings.push("ANTHROPIC_API_KEY is set in this shell. The pipeline removes it for claude runs so they use your subscription.");
+  const provider = loadSettings().settings.provider;
+  let claudeVersion = null;
+  if (provider === "claude") {
+    const claude = spawnSync(process.env.CLAUDE_BIN ?? "claude", ["--version"], { encoding: "utf8", timeout: 15000 });
+    claudeVersion = claude.status === 0 ? claude.stdout.trim() : null;
+    if (!claudeVersion) warnings.push("The claude CLI was not found. Install Claude Code and log in once, or set CLAUDE_BIN to its path. AI stages require it when Claude is selected.");
+    if (process.env.ANTHROPIC_API_KEY) warnings.push("ANTHROPIC_API_KEY is set in this shell. It is stripped from Claude subprocesses so Claude uses its subscription login.");
+  }
   const ffmpeg = spawnSync("ffmpeg", ["-version"], { encoding: "utf8" }).status === 0;
   if (!ffmpeg) warnings.push("ffmpeg was not found on PATH. Audio mixing and QA need it.");
-  return { node: `${process.version} ${process.arch}`, claude: claudeVersion, ffmpeg, warnings, tools: null };
+  return { node: `${process.version} ${process.arch}`, provider, claude: claudeVersion, ffmpeg, warnings, tools: null };
 }
 const ENV = checkEnvironment();
 
@@ -284,6 +290,8 @@ const MODES = {
 const jobs = [];
 let nextId = 1;
 const clients = new Set();
+let chatgptConnectTask = null;
+let chatgptConnectError = null;
 
 function broadcast(event, data) {
   const msg = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
@@ -387,25 +395,37 @@ function pump() {
   start(job);
 }
 
-function start(job) {
+async function start(job) {
+  job.state = "running";
+  job.stage = "validating provider";
+  job.startedAt = Date.now();
+  emitJob(job);
+  const eff = loadSettings();
+  const problems = validateSettings(eff.settings);
+  if (!problems.length && eff.settings.provider === "chatgpt") {
+    try {
+      const connection = await connectionStatus();
+      if (!connection.sharing) throw new Error(connection.status === "consent_required" ? "ChatGPT plan usage consent is required. Connect ChatGPT in Settings." : "ChatGPT is disconnected or expired. Connect ChatGPT in Settings.");
+      const models = await listChatGPTModels();
+      const missing = Object.entries(eff.settings.providers.chatgpt.models).filter(([, value]) => !models.some((m) => m.id === value.model)).map(([step]) => step);
+      if (missing.length) throw new Error(`Configured ChatGPT plan model unavailable for: ${missing.join(", ")}. Refresh model choices in Settings.`);
+    } catch (e) { problems.push(String(e?.message ?? e)); }
+  }
+  if (problems.length) {
+    job.state = "failed";
+    job.errorKind = "config";
+    job.error = `Provider configuration: ${problems.join("; ")}`;
+    job.endedAt = Date.now();
+    emitJob(job);
+    return pump();
+  }
   mkdirSync(LOGS, { recursive: true });
   job.logFile = join(LOGS, `${job.slug}-${stamp()}-${job.mode}.log`);
   writeFileSync(job.logFile, "");
   // Snapshot the settings when the job starts; the pipeline uses exactly these
   // for the whole run, so saving new settings meanwhile only affects later jobs.
-  const eff = loadSettings();
-  if (validateSettings(eff.settings).length) {
-    job.state = "failed";
-    job.errorKind = "config";
-    job.error = "The duration settings are invalid";
-    job.endedAt = Date.now();
-    emitJob(job);
-    return pump();
-  }
   job.settings = { settings: eff.settings, source: eff.source, at: new Date().toISOString() };
-  job.state = "running";
   job.stage = "starting";
-  job.startedAt = Date.now();
   updateTopic(job.slug, (t) => { if (t.status === "queued" || t.status === "rejected") t.status = "scripting"; });
 
   const o = job.options;
@@ -417,11 +437,13 @@ function start(job) {
   if (o.formats.length) args.push("--formats", o.formats.join(","));
   if (o.visualReview) args.push("--visual-review");
   appendLog(job, `$ npm ${args.map((a) => (/\s/.test(a) ? JSON.stringify(a) : a)).join(" ")}\n`);
+  const childEnv = { ...process.env, PATH: `${dirname(process.execPath)}:${process.env.PATH ?? ""}`, FORCE_COLOR: "0", NO_COLOR: "1", CI: "1", PIPELINE_SETTINGS: JSON.stringify(job.settings) };
+  if (eff.settings.provider === "chatgpt") for (const key of Object.keys(childEnv)) if (key.startsWith("CLAUDE_") || key.startsWith("ANTHROPIC_") || key === "CLAUDECODE") delete childEnv[key];
   const proc = spawn(process.platform === "win32" ? "npm.cmd" : "npm", args, {
     cwd: ROOT,
     detached: process.platform !== "win32", // own process group, so Cancel stops claude/remotion/blender too
     // Put this server's own node first on PATH so the child uses the same arch.
-    env: { ...process.env, PATH: `${dirname(process.execPath)}:${process.env.PATH ?? ""}`, FORCE_COLOR: "0", NO_COLOR: "1", CI: "1", PIPELINE_SETTINGS: JSON.stringify(job.settings) },
+    env: childEnv,
   });
   job.proc = proc;
   emitJob(job);
@@ -622,20 +644,23 @@ function detail(slug) {
 function usageFor(slug, runParam) {
   const file = join(OUT, slug, "usage.jsonl");
   const state = loadState(slug);
-  const budgets = state.run?.settings?.budgets ?? loadSettings().settings.budgets;
-  if (!existsSync(file)) return { available: false, slug, note: "Usage was not recorded for this video (it predates usage tracking, or no Claude call has been made yet).", budgets };
+  const savedSettings = state.run?.settings ?? loadSettings().settings;
+  const budgets = budgetsForProvider(savedSettings.budgets, savedSettings.provider);
+  if (!existsSync(file)) return { available: false, slug, note: "Usage was not recorded for this video (it predates usage tracking, or no AI call has been made yet).", budgets };
   const all = parseLedger(readFileSync(file, "utf8"));
   const runs = [...new Set(all.map((r) => r.runId))];
   const runId = runParam && runParam !== "all" ? runParam : runParam === "all" ? "all" : state.usage?.runId && runs.includes(state.usage.runId) ? state.usage.runId : runs.at(-1);
   const rows = runId === "all" ? all : all.filter((r) => r.runId === runId);
-  const s = summarize(rows, budgets);
+  const provider = rows.find((r) => r.provider)?.provider;
+  const activeBudgets = budgetsForProvider(budgets, provider);
+  const s = summarize(rows, activeBudgets);
   return {
-    available: true, slug, runId, runs, budgets,
+    available: true, slug, runId, runs, budgets: activeBudgets,
     totals: s.run, stages: s.stages, limits: s.limits,
     stop: state.usage?.runId === runId ? state.usage?.stop ?? null : null,
     // Metadata only (the ledger holds no prompts); newest last, bounded.
     calls: rows.slice(-1000),
-    cost: "Estimated cost is the Claude CLI's own estimate at API list prices, not a bill. Token usage, estimated cost and the 5-hour usage-window percentage are different measurements; the window percentage is not available here.",
+    cost: "Estimated cost is shown only when Claude reports its API-list-price estimate; it is not a bill. ChatGPT plan usage has no monetary cost value here. The 5-hour usage-window percentage is not available here.",
   };
 }
 
@@ -662,6 +687,23 @@ async function route(req, res) {
 
   // Settings: video formats and durations
   if (req.method === "GET" && p === "/api/settings") return send(res, 200, loadSettings());
+  if (req.method === "GET" && p === "/api/chatgpt/status") return send(res, 200, { ...(await connectionStatus()), error: chatgptConnectError });
+  if (req.method === "POST" && p === "/api/chatgpt/connect") {
+    if (chatgptConnectTask) return send(res, 409, { error: "ChatGPT sign-in is already in progress." });
+    chatgptConnectError = null;
+    chatgptConnectTask = connectChatGPT().catch((e) => { chatgptConnectError = String(e?.message ?? e).slice(0, 300); }).finally(() => { chatgptConnectTask = null; });
+    return send(res, 202, { status: "connecting" });
+  }
+  if (req.method === "POST" && p === "/api/chatgpt/disconnect") {
+    chatgptConnectError = null;
+    const status = await disconnectChatGPT();
+    broadcast("settings", {});
+    return send(res, 200, status);
+  }
+  if (req.method === "GET" && p === "/api/chatgpt/models") {
+    try { return send(res, 200, { models: await listChatGPTModels() }); }
+    catch (e) { return send(res, 409, { error: String(e?.message ?? e).slice(0, 300), models: [] }); }
+  }
   if (req.method === "PUT" && p === "/api/settings") {
     const saved = saveSettings(await readBody(req));
     statusCache.clear();
@@ -857,7 +899,7 @@ const server = createServer(async (req, res) => {
 recoverInterrupted();
 server.listen(PORT, HOST, () => {
   console.log(`Musical Explainers admin: http://localhost:${PORT}`);
-  console.log(`Node ${ENV.node} · claude CLI: ${ENV.claude ?? "not found"} · ffmpeg: ${ENV.ffmpeg ? "yes" : "no"}`);
+  console.log(`Node ${ENV.node} · provider: ${ENV.provider}${ENV.provider === "claude" ? ` · claude CLI: ${ENV.claude ?? "not found"}` : ""} · ffmpeg: ${ENV.ffmpeg ? "yes" : "no"}`);
   for (const w of ENV.warnings) console.log(`WARNING: ${w}`);
   refreshStatus(allSlugs(), true).then(() => broadcast("status", {}));
 });
