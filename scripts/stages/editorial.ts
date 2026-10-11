@@ -122,7 +122,7 @@ export async function researchStage(ctx: RunCtx): Promise<StageResult> {
     ctx.topic?.notes ? `Producer notes: ${ctx.topic.notes}` : "",
   ].filter(Boolean).join("\n");
   console.log(`  researching with claude -p (web search)`);
-  const reply = await claudeJson<Research>(brief, { allowedTools: ["WebSearch", "WebFetch"], label: "research", check: validateResearch, timeoutMs: Number(process.env.CLAUDE_RESEARCH_TIMEOUT_MS ?? 30 * 60 * 1000) });
+  const reply = await claudeJson<Research>(brief, { allowedTools: ["WebSearch", "WebFetch"], step: "research", label: "research", check: validateResearch, timeoutMs: Number(process.env.CLAUDE_RESEARCH_TIMEOUT_MS ?? 30 * 60 * 1000) });
   const file: ResearchFile = { ...reply, version: 1, inputHash, promptVersion: PROMPT_VERSIONS.research, at: new Date().toISOString(), topic: { slug: ctx.slug, title: ctx.title, angle: ctx.topic?.angle } };
   archive(ctx.slug, paths.research(ctx.slug), "research");
   writeJson(paths.research(ctx.slug), file);
@@ -174,7 +174,7 @@ export async function outlineStage(ctx: RunCtx): Promise<StageResult> {
       `\n## Research dossier\n${JSON.stringify(dossierForPrompt(research), null, 1)}`,
     ].join("\n");
     console.log(`  outlining the ${FORMAT_LABEL[format]} with claude -p`);
-    const reply = await claudeJson<Outline>(brief, { label: `outline ${format}`, check: (o) => validateOutline(o, research, ctx.settings, format) });
+    const reply = await claudeJson<Outline>(brief, { step: "outline", label: `outline ${format}`, check: (o) => validateOutline(o, research, ctx.settings, format) });
     const entry: OutlineEntry = { ...reply, format, inputHash, researchHash: rHash, durationKey: formatKey(ctx.settings, format), at: new Date().toISOString(), promptVersion: PROMPT_VERSIONS.outline };
     saveOutline(ctx.slug, format, entry);
     const b = outlineBlockers(entry);
@@ -279,7 +279,7 @@ async function writeScript(ctx: RunCtx, format: Format, research: ResearchFile, 
     ...extra,
   ].filter(Boolean).join("\n");
   console.log(`  writing the ${FORMAT_LABEL[format]} script with claude -p`);
-  let reply = await claudeJson<ScriptReply>(brief, { label: `script ${format}`, check: (r) => checkScript(r, format, research, ctx.settings) });
+  let reply = await claudeJson<ScriptReply>(brief, { step: "script", label: `script ${format}`, check: (r) => checkScript(r, format, research, ctx.settings) });
   // Length is checked after the structural checks so the model gets one precise, numeric retry. If it still
   // misses, the script is kept and the miss is surfaced (the editorial review judges format fit, and the
   // measured audio is the final gate) instead of failing before anyone can look at it.
@@ -287,7 +287,7 @@ async function writeScript(ctx: RunCtx, format: Format, research: ResearchFile, 
   if (miss.length) {
     console.log(`  ${FORMAT_LABEL[format]} length: ${miss[0]}`);
     try {
-      reply = await claudeJson<ScriptReply>(`${brief}\n\n## Your previous attempt missed the length\n${miss[0]}\nPrevious attempt:\n${JSON.stringify(reply.shots.map((x) => ({ id: x.id, section: x.section, narration: x.narration, lyric: x.lyric, claims: x.claims })), null, 1)}\nRewrite it with the length fixed, changing as little else as possible.`, { label: `script ${format} (length)`, check: (r) => checkScript(r, format, research, ctx.settings, true) });
+      reply = await claudeJson<ScriptReply>(`${brief}\n\n## Your previous attempt missed the length\n${miss[0]}\nPrevious attempt:\n${JSON.stringify(reply.shots.map((x) => ({ id: x.id, section: x.section, narration: x.narration, lyric: x.lyric, claims: x.claims })), null, 1)}\nRewrite it with the length fixed, changing as little else as possible.`, { step: "scriptFix", label: `script ${format} (length)`, check: (r) => checkScript(r, format, research, ctx.settings, true) });
     } catch (e) {
       if (!(e instanceof PipelineError) || e.kind !== "invalid") throw e;
       console.log(`  keeping the first ${FORMAT_LABEL[format]} script; its length miss will be flagged`);
@@ -383,7 +383,7 @@ export async function reviewStage(ctx: RunCtx): Promise<StageResult> {
     for (let round = 0; ; round++) {
       if (!reply) {
         console.log(`  editorial review of the ${FORMAT_LABEL[format]} (round ${round + 1})`);
-        reply = await claudeJson<ReviewReply>(reviewPrompt(spec, format, research, outline, ctx.settings), { label: `review ${format}`, check: (r) => validateReview(r) });
+        reply = await claudeJson<ReviewReply>(reviewPrompt(spec, format, research, outline, ctx.settings), { step: "review", label: `review ${format}`, check: (r) => validateReview(r) });
         // A reviewer naming a shot that doesn't exist is a slip, not a reason to discard the review: keep the finding, drop the bad reference.
         const known = new Set(spec.shots.map((s) => s.id));
         const fix = <T extends { shot?: string; problem: string }>(x: T): T => (x.shot && !known.has(x.shot) ? { ...x, shot: undefined, problem: `(${x.shot}) ${x.problem}` } : x);

@@ -72,6 +72,60 @@
       "chorusIdea": "Three, four satellites, here I am!",
       "status": "scripting",
       "priority": 8
+    },
+    {
+      "slug": "can-ai-agents-go-rogue",
+      "title": "Can an AI agent go rogue?",
+      "category": "technology",
+      "angle": "An AI that can click, browse, and use tools can do more than answer a question—so what happens when it makes the wrong move?",
+      "chorusIdea": "One more click, one more call—who's in control of it all?",
+      "status": "queued",
+      "priority": 9
+    },
+    {
+      "slug": "why-ai-needs-so-much-electricity",
+      "title": "Why does AI use so much electricity?",
+      "category": "technology",
+      "angle": "Every AI answer has a physical cost: chips switching billions of times, plus the cooling needed to keep data centres alive.",
+      "chorusIdea": "Compute, cool, repeat the beat—where the watts meet the heat!",
+      "status": "queued",
+      "priority": 10
+    },
+    {
+      "slug": "how-atomic-clocks-keep-time",
+      "title": "How can an atomic clock measure time so precisely?",
+      "category": "physics",
+      "angle": "The most precise clocks don't count gears or pendulums—they count the incredibly steady rhythm of atoms.",
+      "chorusIdea": "Tick by tick, atom beat—time so fine you can't compete!",
+      "status": "queued",
+      "priority": 11
+    },
+    {
+      "slug": "why-does-mars-have-a-giant-cloud",
+      "title": "Why does Mars grow a giant cloud every day?",
+      "category": "space",
+      "angle": "A cloud stretching hundreds of miles appears on Mars again and again—what makes a planet's atmosphere do that?",
+      "chorusIdea": "Rise and stretch across the red—Mars makes clouds above its head!",
+      "status": "queued",
+      "priority": 12
+    },
+    {
+      "slug": "how-can-a-robot-dog-run-a-marathon",
+      "title": "How can a robot dog run a marathon on one battery?",
+      "category": "robotics",
+      "angle": "A robot running for hours is a puzzle in energy, balance, motors, and heat—not just a clever set of legs.",
+      "chorusIdea": "Balance, motors, battery flow—how far can a robot go?",
+      "status": "queued",
+      "priority": 13
+    },
+    {
+      "slug": "why-are-data-centre-batteries-getting-cheaper",
+      "title": "Why are giant batteries becoming a better deal than gas turbines?",
+      "category": "technology",
+      "angle": "The AI boom is changing how power gets stored and delivered—why can a giant battery sometimes beat a power plant on cost?",
+      "chorusIdea": "Store the spark, release the power—save it up for peak demand hour!",
+      "status": "queued",
+      "priority": 14
     }
   ]
 }

@@ -12,8 +12,43 @@ export const SETTINGS_VERSION = 1;
 export const FORMATS = ["main", "short"];
 export const FORMAT_LABEL = { main: "Landscape (16:9)", short: "Short (9:16)" };
 
+/**
+ * Every Claude call in the pipeline, one row per step, so model and reasoning
+ * effort can be tuned where it pays. Project rule: Sonnet is the ceiling (no
+ * Opus); Haiku is the cheap option for mechanical steps.
+ * `why` is the rationale behind the default and is shown in the admin panel.
+ */
+export const MODEL_STEPS = [
+  { id: "research", label: "Research", stage: "research", tools: "web", why: "Judgement-heavy: qualifies the topic, picks the angle and builds the evidence dossier with web search. Everything downstream inherits its quality, and it runs once per topic." },
+  { id: "outline", label: "Outline", stage: "outline", why: "Structure under a duration budget; the research already did the thinking, so medium effort is enough." },
+  { id: "script", label: "Script", stage: "script", why: "The creative core (narration, lyric, claims). Quality here is what viewers hear, so it gets the most reasoning." },
+  { id: "scriptFix", label: "Script length fix", stage: "script", why: "A precise numeric rewrite (add or cut N words) after a failed length check. Mechanical." },
+  { id: "review", label: "Editorial review", stage: "script", why: "Judgement of the finished script against the thesis. A shallow reviewer approves bad scripts, so keep effort high." },
+  { id: "factcheck", label: "Fact check", stage: "factcheck", tools: "web", why: "Verdict per claim with sources. Needs reliable search use and caution; many items per call, so medium rather than high." },
+  { id: "revise", label: "Fact revision", stage: "factcheck", why: "Rewrites only flagged shots using given corrections. Narrow and mechanical." },
+  { id: "direct", label: "Shot direction", stage: "direct", why: "Many batches of structured storyboard JSON validated by code (retried on error). The highest call volume, so this is the best place to save." },
+  { id: "visualReview", label: "Visual review", stage: "qa", tools: "images", why: "Looks at contact sheets and flags layout problems. Optional and run once per candidate; vision quality matters, so stay on Sonnet." },
+];
+export const MODEL_STEP_IDS = MODEL_STEPS.map((s) => s.id);
+/** Aliases the CLI resolves to the newest model of that family. */
+export const MODEL_CHOICES = Object.freeze(["sonnet", "haiku"]);
+export const EFFORT_LEVELS = Object.freeze(["low", "medium", "high", "xhigh", "max"]);
+/** A full model id is also accepted when it is a Sonnet or Haiku (e.g. claude-sonnet-5-5). */
+export const isAllowedModel = (m) => typeof m === "string" && (MODEL_CHOICES.includes(m) || /^claude-(sonnet|haiku)-[\w.-]+$/.test(m));
+
 export const DEFAULT_SETTINGS = Object.freeze({
   version: SETTINGS_VERSION,
+  models: Object.freeze({
+    research: Object.freeze({ model: "sonnet", effort: "high" }),
+    outline: Object.freeze({ model: "sonnet", effort: "medium" }),
+    script: Object.freeze({ model: "sonnet", effort: "high" }),
+    scriptFix: Object.freeze({ model: "sonnet", effort: "medium" }),
+    review: Object.freeze({ model: "sonnet", effort: "high" }),
+    factcheck: Object.freeze({ model: "sonnet", effort: "medium" }),
+    revise: Object.freeze({ model: "sonnet", effort: "low" }),
+    direct: Object.freeze({ model: "sonnet", effort: "low" }),
+    visualReview: Object.freeze({ model: "sonnet", effort: "medium" }),
+  }),
   formats: Object.freeze({
     main: Object.freeze({ targetSeconds: 420, minSeconds: 300, maxSeconds: 600 }),
     short: Object.freeze({ targetSeconds: 45, minSeconds: 30, maxSeconds: 60 }),
@@ -52,6 +87,18 @@ export function validateSettings(s) {
       if (isNum(x.targetSeconds) && isNum(x.maxSeconds) && x.targetSeconds > x.maxSeconds) p.push(`${label}: target (${fmt(x.targetSeconds)}) is longer than the maximum (${fmt(x.maxSeconds)})`);
       if (isNum(x.maxSeconds) && x.maxSeconds > 3 * 3600) p.push(`${label}: maximum must be at most 3 hours`);
     }
+  if (s.models != null) {
+    if (typeof s.models !== "object" || Array.isArray(s.models)) p.push("models must be an object");
+    else
+      for (const st of MODEL_STEPS) {
+        const m = s.models[st.id];
+        if (!m || typeof m !== "object") p.push(`${st.label}: model settings are missing`);
+        else {
+          if (!isAllowedModel(m.model)) p.push(`${st.label}: model must be ${MODEL_CHOICES.join(" or ")} (Opus is not allowed)`);
+          if (!EFFORT_LEVELS.includes(m.effort)) p.push(`${st.label}: effort must be one of ${EFFORT_LEVELS.join(", ")}`);
+        }
+      }
+  }
   const n = s.narration;
   if (!n || typeof n !== "object") p.push("narration is required");
   else {
@@ -68,8 +115,11 @@ export function normalizeSettings(s) {
     version: SETTINGS_VERSION,
     formats: { main: pick(s?.formats?.main), short: pick(s?.formats?.short) },
     narration: { wordsPerMinute: s?.narration?.wordsPerMinute, targetTolerance: s?.narration?.targetTolerance },
+    // Model choices are optional input: any step not given keeps its default.
+    models: Object.fromEntries(MODEL_STEPS.map((st) => [st.id, { ...DEFAULT_SETTINGS.models[st.id], ...pickModel(s?.models?.[st.id]) }])),
   };
 }
+const pickModel = (x) => Object.fromEntries(["model", "effort"].filter((k) => x && k in x).map((k) => [k, x[k]]));
 
 /**
  * Effective settings from whatever was read from disk (possibly null, legacy
@@ -90,12 +140,14 @@ export function resolveSettings(raw) {
       short: { ...DEFAULT_SETTINGS.formats.short, ...(raw.formats?.short ?? {}) },
     },
     narration: { ...DEFAULT_SETTINGS.narration, ...(raw.narration ?? {}) },
+    models: raw.models,
   });
   const problems = validateSettings(merged);
   if (problems.length) {
     warnings.push(`config/settings.json is invalid (${problems.join("; ")}); using the defaults until it is saved again`);
     return { settings: clone(DEFAULT_SETTINGS), source: "defaults", warnings };
   }
+  // Models are optional in the file: an older file without them is not "partial".
   const partial = FORMATS.some((f) => !raw.formats?.[f]) || !raw.narration;
   if (partial) warnings.push("config/settings.json is missing some sections; defaults fill the gaps");
   return { settings: merged, source: partial ? "file+defaults" : "file", warnings };
