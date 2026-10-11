@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "formats": {
+    "main": {
+      "targetSeconds": 180,
+      "minSeconds": 120,
+      "maxSeconds": 240
+    },
+    "short": {
+      "targetSeconds": 45,
+      "minSeconds": 30,
+      "maxSeconds": 60
+    }
+  },
+  "narration": {
+    "wordsPerMinute": 180,
+    "targetTolerance": 0.15
+  },
+  "models": {
+    "research": {
+      "model": "sonnet",
+      "effort": "high"
+    },
+    "outline": {
+      "model": "sonnet",
+      "effort": "medium"
+    },
+    "script": {
+      "model": "sonnet",
+      "effort": "high"
+    },
+    "scriptFix": {
+      "model": "sonnet",
+      "effort": "medium"
+    },
+    "review": {
+      "model": "sonnet",
+      "effort": "high"
+    },
+    "factcheck": {
+      "model": "sonnet",
+      "effort": "medium"
+    },
+    "revise": {
+      "model": "sonnet",
+      "effort": "low"
+    },
+    "direct": {
+      "model": "sonnet",
+      "effort": "low"
+    },
+    "visualReview": {
+      "model": "sonnet",
+      "effort": "medium"
+    }
+  }
+}
