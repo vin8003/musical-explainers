@@ -44,6 +44,13 @@ test("ChatGPT plan exhaustion is a hard-stop class and is not translated to a Cl
   );
 });
 
+test("invalid Responses requests preserve the API diagnostic and are classified as non-retryable config errors", async () => {
+  await assert.rejects(
+    chatGPTResponseWithToken("prompt", {}, "eligible-model", "oauth-access-token", async () => new Response(JSON.stringify({ error: { code: "invalid_request_error", message: "Unsupported parameter: text.format", param: "text.format" } }), { status: 400, headers: { "x-request-id": "req_test123" } })),
+    (error) => error.category === "request-invalid" && /text\.format/.test(error.message) && /req_test123/.test(error.message),
+  );
+});
+
 test("ChatGPT auth status distinguishes disconnected, consent-required, reauth and connected without exposing tokens", () => {
   const data = mkdtempSync(join(tmpdir(), "me-chatgpt-auth-"));
   const source = `

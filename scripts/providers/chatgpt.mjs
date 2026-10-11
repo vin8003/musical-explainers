@@ -37,10 +37,15 @@ export async function chatGPTResponseWithToken(prompt, options, model, token, fe
   });
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
-    const code = err.error?.code ?? err.error?.type ?? response.status;
+    const info = err.error ?? err;
+    const code = info.code ?? info.type ?? response.status;
     const usageLimit = ["subscription_sharing_usage_limit_exceeded", "subscription_sharing_usage_unavailable"].includes(code);
-    const e = new Error(usageLimit ? "ChatGPT plan usage limit reached. Review Manage usage in ChatGPT Settings before trying again." : `ChatGPT Responses request failed (${code}).`);
-    e.category = usageLimit ? "usage-limit" : response.status === 429 ? "rate-limit" : response.status === 401 ? "auth-expired" : "provider";
+    const detail = typeof info.message === "string" ? info.message : typeof info.detail === "string" ? info.detail : "";
+    const param = typeof info.param === "string" ? `; parameter: ${info.param}` : "";
+    const requestId = response.headers.get("x-request-id");
+    const diagnostic = `${code}${param}${requestId ? `; request: ${requestId}` : ""}${detail ? `: ${detail.slice(0, 180)}` : ""}`;
+    const e = new Error(usageLimit ? "ChatGPT plan usage limit reached. Review Manage usage in ChatGPT Settings before trying again." : `ChatGPT Responses request failed (${diagnostic}).`);
+    e.category = usageLimit ? "usage-limit" : response.status === 401 ? "auth-expired" : response.status === 404 ? "unsupported-model" : response.status === 400 || response.status === 403 ? "request-invalid" : response.status === 429 ? "rate-limit" : "provider";
     e.usage = null;
     throw e;
   }
@@ -61,13 +66,23 @@ export async function chatGPTResponseWithToken(prompt, options, model, token, fe
       try { event = JSON.parse(data); } catch { continue; }
       if (event.type === "response.output_text.delta") output += event.delta ?? "";
       if (event.type === "response.completed") completed = event.response;
-      if (["response.failed", "response.incomplete", "error"].includes(event.type)) { failure = event.response?.error ?? event.error ?? { code: event.type }; failureUsage = event.response?.usage ?? null; }
+      if (["response.failed", "response.incomplete", "error"].includes(event.type)) {
+        failure = event.response?.error ?? event.error ?? { code: event.type };
+        failure.event = event.type;
+        failure.responseId = event.response?.id ?? null;
+        failureUsage = event.response?.usage ?? null;
+      }
     }
   }
   if (failure) {
     const code = failure.code ?? "unknown_error";
     const limit = ["subscription_sharing_usage_limit_exceeded", "subscription_sharing_usage_unavailable"].includes(code);
-    throw Object.assign(new Error(limit ? "ChatGPT plan usage limit reached. Review Manage usage in ChatGPT Settings before trying again." : `ChatGPT response ended with ${code}.`), { category: limit ? "usage-limit" : "provider", usage: completed?.usage ?? failureUsage });
+    const detail = typeof failure.message === "string" ? `: ${failure.message.slice(0, 300)}` : "";
+    const param = typeof failure.param === "string" ? `; parameter: ${failure.param}` : "";
+    const responseId = failure.responseId ? ` [response ${failure.responseId}]` : "";
+    const requestId = response.headers.get("x-request-id");
+    const invalidRequest = code === "invalid_request_error" || code === "subscription_sharing_unsupported_capability";
+    throw Object.assign(new Error(limit ? "ChatGPT plan usage limit reached. Review Manage usage in ChatGPT Settings before trying again." : `ChatGPT response ${failure.event ?? "failed"} (${code}${param}${requestId ? `; request: ${requestId}` : ""})${detail}${responseId}.`), { category: limit ? "usage-limit" : invalidRequest ? "request-invalid" : "provider", usage: completed?.usage ?? failureUsage });
   }
   if (!completed) throw Object.assign(new Error("ChatGPT stream ended without response.completed."), { category: "stream", usage: null });
   if (!output.trim()) throw Object.assign(new Error("ChatGPT completed the request without text output."), { category: "empty", usage: completed.usage ?? null });

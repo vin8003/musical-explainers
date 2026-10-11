@@ -5,7 +5,7 @@ import { test } from "node:test";
 import { DEFAULT_SETTINGS, MODEL_STEPS, normalizeSettings, resolveSettings, validateSettings } from "../src/schema/settings.mjs";
 
 const tsx = (code, env = {}) => {
-  const r = spawnSync(process.execPath, ["node_modules/tsx/dist/cli.mjs", "-e", code], { encoding: "utf8", env: { ...process.env, PIPELINE_SETTINGS: "", CLAUDE_MODEL: "", CLAUDE_EFFORT: "", ...env } });
+  const r = spawnSync(process.execPath, ["node_modules/tsx/dist/cli.mjs", "-e", code], { encoding: "utf8", env: { ...process.env, PIPELINE_SETTINGS: JSON.stringify({ settings: DEFAULT_SETTINGS }), CLAUDE_MODEL: "", CLAUDE_EFFORT: "", ...env } });
   assert.equal(r.status, 0, r.stderr);
   return JSON.parse(r.stdout.trim().split("\n").pop());
 };

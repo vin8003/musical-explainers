@@ -168,7 +168,7 @@ async function invoke(prompt: string, opts: ProviderOptions, meta: Meta): Promis
   const row = finishCall(res, { status: r.ok ? "ok" : "failed", usage, model: provider === "claude" ? usage.modelUsed : model, effort: reportedEffort, exitCode: r.exitCode, error: r.error ? { category: r.error.category, message: r.error.message.slice(0, 200) } : null });
   if (!r.ok) {
     const c = r.error!.category;
-    throw new PipelineError(r.error!.message, c === "usage-limit" ? "busy" : c === "missing" ? "missing" : c === "unsupported-model" || c === "auth-expired" ? "config" : "external");
+    throw new PipelineError(r.error!.message, c === "usage-limit" ? "busy" : c === "missing" ? "missing" : c === "unsupported-model" || c === "auth-expired" || c === "request-invalid" ? "config" : "external");
   }
   return { text: r.text!, row };
 }
