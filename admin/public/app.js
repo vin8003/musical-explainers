@@ -393,6 +393,7 @@ const jobHeadHtml = (j) => `${jobPill(j)} ${failurePill(j)} <span class="muted s
   <div style="min-width:220px">${progressBar(j.progress)}</div>
   ${j.error ? `<div class="small err" style="flex-basis:100%">${esc(j.error)}${j.hint ? `<div class="muted">${esc(j.hint)}</div>` : ""}</div>` : ""}
   ${j.durations ? `<div class="small" style="flex-basis:100%;color:var(--orange)">${Object.entries(j.durations).map(([f, d]) => `${FMT_SHORT[f]}: measured ${dur(d.seconds)} (narration ${dur(d.narrationSeconds)}), allowed ${dur(d.minSeconds)}–${dur(d.maxSeconds)}`).join(" · ")}</div>` : ""}
+  ${usageStripHtml(j.usage)}
   ${jobSettingsHtml(j)}`;
 
 function setLog(text) {
@@ -423,7 +424,7 @@ async function loadVideo(slug, fresh = false) {
   return S.video;
 }
 
-const TABS = [["overview", "Overview"], ["research", "Research & review"], ["storyboard", "Storyboard"], ["factcheck", "Fact-check"], ["assets", "Assets & audio"], ["quality", "Quality"], ["review", "Review"], ["logs", "Logs"]];
+const TABS = [["overview", "Overview"], ["research", "Research & review"], ["storyboard", "Storyboard"], ["factcheck", "Fact-check"], ["assets", "Assets & audio"], ["quality", "Quality"], ["review", "Review"], ["usage", "Usage"], ["logs", "Logs"]];
 
 async function renderVideo() {
   const { slug, tab } = S.route;
@@ -444,6 +445,7 @@ async function renderVideo() {
   else if (tab === "assets") renderAssetsTab(body);
   else if (tab === "quality") renderQualityTab(body);
   else if (tab === "review") renderReviewTab(body);
+  else if (tab === "usage") await renderUsageTab(body);
   else if (tab === "logs") await renderLogsTab(body);
   else renderOverviewTab(body);
 }
@@ -616,6 +618,131 @@ function renderResearchTab(body) {
   $$("[data-stage]", body).forEach((b) => (b.onclick = () => startJob(v.slug, { mode: "stage", stage: b.dataset.stage }).catch(() => {})));
 }
 
+// ----- usage: live totals, budgets, per-stage and per-call views -----
+
+let U = null; // /schema/usage.mjs, loaded at boot
+const tok = (n) => (U ? U.fmtTokens(n) : n === null || n === undefined ? "unknown" : String(n));
+const usd = (n) => (U ? U.fmtUsd(n) : n === null || n === undefined ? "unknown" : `$${n}`);
+const compl = (t) => ({ none: ["no calls yet", ""], known: ["usage known", "ok"], partial: ["usage partial", "warn"], unknown: ["usage unknown", "warn"] }[t.completeness] ?? ["", ""]);
+const pct = (v) => (v === null || v === undefined ? "unknown" : `${Math.round(v)}%`);
+
+/** Compact live strip for a job: reads the same ledger aggregate the Usage tab and the terminal use. Unknown is never shown as 0. */
+function usageStripHtml(u) {
+  if (!u?.totals) return "";
+  const t = u.totals;
+  const [label, cls] = compl(t);
+  const hot = (u.limits ?? []).filter((l) => l.state === "warning" || l.state === "exceeded");
+  return `<div class="small" style="flex-basis:100%">
+    <b>Claude usage (this run):</b> ${t.calls} call${t.calls === 1 ? "" : "s"}${t.repairCalls ? ` (${t.repairCalls} repair)` : ""} ·
+    in ${t.totalInputTokens === null ? "unknown" : tok(t.totalInputTokens) + (t.lowerBound ? "+" : "")} · out ${t.outputTokens === null ? "unknown" : tok(t.outputTokens) + (t.lowerBound ? "+" : "")} ·
+    est. cost ${t.costUsd === null ? "unavailable" : usd(t.costUsd) + (t.costUnknownCalls ? "+" : "")} <span class="pill ${cls}">${label}</span>
+    ${hot.map((l) => `<span class="pill ${l.state === "exceeded" ? "bad" : "warn"}">${esc(l.scope)}${l.stage ? " " + esc(l.stage) : ""} ${esc(l.label)} ${pct(l.pct)}</span>`).join(" ")}
+    ${u.stop ? `<div class="err">Stopped by usage budget before a Claude call at ${esc(u.stop.stage)}: ${u.stop.blocks.map((b) => esc(b.budget)).join(", ")}. <a href="#/settings">Raise or clear the limit</a>, then continue; finished stages are kept.</div>` : ""}
+  </div>`;
+}
+
+const bar = (p, state) => `<div class="progress" style="margin:2px 0"><div style="width:${Math.min(100, Math.max(0, p ?? 0))}%;background:${state === "exceeded" ? "var(--red)" : state === "warning" ? "var(--orange)" : "var(--teal)"}"></div></div>`;
+
+async function renderUsageTab(body) {
+  const slug = S.route.slug;
+  const run = S.usageRun ?? "";
+  const d = await api(`/api/videos/${slug}/usage${run ? `?run=${encodeURIComponent(run)}` : ""}`);
+  if (S.route.slug !== slug || S.route.tab !== "usage") return;
+  if (!d.available) {
+    body.innerHTML = `<div class="panel empty">${esc(d.note)}<div class="small muted">Usage is shown as unavailable, not zero.</div></div>`;
+    return;
+  }
+  const t = d.totals;
+  const [label, cls] = compl(t);
+  const known = (n, lb) => (n === null ? `<span class="muted">unknown</span>` : esc(tok(n)) + (lb ? "+" : ""));
+  const stageNum = (x, n, lb) => (x.calls === 0 ? `<span class="muted">–</span>` : known(n, lb)); // no calls is "none", not "unknown"
+  const stop = d.stop;
+  const lim = d.limits ?? [];
+  const tile = (title, val, sub = "") => `<div class="panel" style="margin:0"><div class="small muted">${title}</div><div style="font-size:20px;font-weight:700">${val}</div><div class="small muted">${sub}</div></div>`;
+  const stageRows = Object.entries(d.stages)
+    .map(([stage, x]) => ({ stage, x, size: (x.totalInputTokens ?? 0) + (x.outputTokens ?? 0) }))
+    .sort((a, b) => b.size - a.size);
+  const maxSize = Math.max(1, ...stageRows.map((r) => r.size));
+  const filters = S.usageFilter ?? { stage: "", kind: "", status: "", text: "" };
+  const calls = d.calls.filter((c) => (!filters.stage || c.stage === filters.stage) && (!filters.status || c.status === filters.status) && (!filters.kind || (filters.kind === "repair" ? c.repair : !c.repair)) && (!filters.text || `${c.operation} ${c.error?.message ?? ""} ${c.reason ?? ""}`.toLowerCase().includes(filters.text.toLowerCase())));
+  const sel = (id, opts, cur) => `<select id="${id}" style="width:auto">${opts.map(([v, l]) => `<option value="${esc(v)}" ${v === cur ? "selected" : ""}>${esc(l)}</option>`).join("")}</select>`;
+  body.innerHTML = `
+    ${stop ? `<div class="panel" style="border-color:var(--red)" role="alert"><h3 style="color:var(--red)">Stopped by a usage budget</h3>
+      <div>No Claude call was started in <b>${esc(stop.stage)}</b> because: ${stop.blocks.map((b) => `<div class="small"><code>${esc(b.budget)}</code> limit ${esc(b.limit)}, used ${b.used === null ? "unknown" : esc(b.used)} — ${esc(b.reason)}</div>`).join("")}</div>
+      <div class="small muted">This is a budget stop, not a generation failure or a Claude usage-window limit. Completed stages are kept. <a href="#/settings">Raise or clear the limit</a>, then continue the pipeline.</div></div>` : ""}
+    <div class="row" style="margin-bottom:8px"><h2 class="grow" style="margin:0">Claude usage <span class="pill ${cls}">${label}</span></h2>
+      <label class="small muted">Run ${sel("usRun", [["", "latest"], ["all", "all runs"], ...d.runs.map((r) => [r, r])], run)}</label></div>
+    <div class="grid2" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr));margin-bottom:16px">
+      ${tile("Claude calls", `${t.calls}`, `${t.ok} ok · ${t.failed} failed${t.blocked ? ` · ${t.blocked} blocked before launch` : ""}`)}
+      ${tile("Repair calls", `${t.repairCalls}`, "extra calls to fix invalid output")}
+      ${tile("Input tokens", known(t.totalInputTokens, t.lowerBound), `fresh ${t.inputTokens === null ? "unknown" : tok(t.inputTokens)} · cache read ${t.cacheReadTokens === null ? "unknown" : tok(t.cacheReadTokens)} · cache write ${t.cacheCreationTokens === null ? "unknown" : tok(t.cacheCreationTokens)}`)}
+      ${tile("Output tokens", known(t.outputTokens, t.lowerBound))}
+      ${tile("Estimated cost", t.costUsd === null ? `<span class="muted">unavailable</span>` : esc(usd(t.costUsd)) + (t.costUnknownCalls ? "+" : ""), t.costUnknownCalls && t.calls ? `${t.costUnknownCalls} call(s) without a cost` : "CLI estimate, not a bill")}
+      ${tile("Time in Claude calls", `${Math.round(t.durationMs / 1000)}s`)}
+    </div>
+    <div class="small muted" style="margin-bottom:16px">Measured from the Claude CLI's structured output. Token usage, estimated cost (the CLI's estimate at API list prices) and the 5-hour usage-window percentage are different measurements; the window percentage is not available here. "unknown" means the CLI did not report it; it is never counted as zero. A trailing + means at least one call's usage was missing, so the real number is higher.</div>
+    <div class="panel tablewrap"><h3>Budgets</h3>
+      ${lim.length ? `<table><thead><tr><th>Scope</th><th>Limit</th><th>Used</th><th>Remaining</th><th style="width:180px">Progress</th></tr></thead><tbody>${lim.map((l) => `<tr><td>${esc(l.scope)}${l.stage ? ` · ${esc(l.stage)}` : ""}</td><td>${esc(l.label)}: ${esc(l.limit)}</td><td>${l.used === null ? "unknown" : esc(l.metric === "maxEstimatedCost" ? usd(l.used) : l.used)}</td><td>${l.remaining === null ? "unknown" : esc(l.metric === "maxEstimatedCost" ? usd(l.remaining) : l.remaining)}</td><td>${bar(l.pct, l.state)}<span class="small ${l.state === "exceeded" ? "err" : l.state === "warning" ? "" : "muted"}" style="${l.state === "warning" ? "color:var(--orange)" : ""}">${pct(l.pct)}${l.state === "warning" ? " · warning" : l.state === "exceeded" ? " · limit reached" : l.state === "unknown" ? " · usage unknown" : ""}</span></td></tr>`).join("")}</tbody></table>`
+        : `<div class="small muted">No run or stage limits are set: usage is unrestricted. An empty limit means no limit (not zero). Set limits in <a href="#/settings">Settings</a>.</div>`}
+      <div class="small muted">Repairs: at most ${d.budgets?.repair?.maxAttemptsPerOperation ?? "unlimited (hard cap 3)"} per operation${d.budgets?.repair?.maxCallsPerRun != null ? `, ${d.budgets.repair.maxCallsPerRun} per run` : ""} · unknown usage: ${esc(d.budgets?.unknownUsage ?? "warn")} · warn at ${esc(d.budgets?.warnings?.usagePercent ?? 80)}%</div>
+    </div>
+    <div class="panel tablewrap"><h3>By stage (most expensive first)</h3>
+      <table><thead><tr><th>Stage</th><th>Calls</th><th>ok / failed</th><th>Repair</th><th>Input</th><th>Output</th><th>Cache read / write</th><th>Est. cost</th><th>Time</th><th>Stage budget</th></tr></thead><tbody>
+      ${stageRows.map(({ stage, x, size }) => {
+        const sl = lim.filter((l) => l.scope === "stage" && l.stage === stage);
+        return `<tr><td><b>${esc(stage)}</b>${bar((size / maxSize) * 100)}</td><td>${x.calls}</td><td>${x.ok} / ${x.failed}</td><td>${x.repairCalls}</td><td>${stageNum(x, x.totalInputTokens, x.lowerBound)}</td><td>${stageNum(x, x.outputTokens, x.lowerBound)}</td><td>${stageNum(x, x.cacheReadTokens)} / ${stageNum(x, x.cacheCreationTokens)}</td><td>${x.calls === 0 ? "–" : x.costUsd === null ? '<span class="muted">unavailable</span>' : esc(usd(x.costUsd))}</td><td>${Math.round(x.durationMs / 1000)}s</td>
+          <td>${sl.length ? sl.map((l) => `<div class="small">${esc(l.label)}: ${l.remaining === null ? "unknown" : esc(l.remaining)} left · ${pct(l.pct)}${bar(l.pct, l.state)}</div>`).join("") : '<span class="muted small">no limit</span>'}</td></tr>`;
+      }).join("") || '<tr><td colspan="10" class="muted">No Claude calls in this run (cached stages make none).</td></tr>'}
+      </tbody></table></div>
+    <div class="panel tablewrap"><h3>Calls (${calls.length} of ${d.calls.length})</h3>
+      <div class="row" style="margin-bottom:8px">
+        ${sel("usfStage", [["", "all stages"], ...Object.keys(d.stages).map((k) => [k, k])], filters.stage)}
+        ${sel("usfKind", [["", "generation + repair"], ["generation", "generation only"], ["repair", "repair only"]], filters.kind)}
+        ${sel("usfStatus", [["", "any outcome"], ["ok", "ok"], ["failed", "failed"], ["blocked", "blocked"], ["running", "running"]], filters.status)}
+        <input id="usfText" placeholder="search operation / error" value="${esc(filters.text)}" style="width:220px" />
+      </div>
+      <table><thead><tr><th>Time</th><th>Stage / operation</th><th>Model · effort</th><th>#</th><th>Kind</th><th>In / out</th><th>Usage</th><th>Time</th><th>Outcome</th></tr></thead><tbody>
+      ${calls.slice().reverse().map((c) => `<tr data-call="${esc(c.callId)}" style="cursor:pointer"><td class="small">${esc((c.startedAt ?? "").slice(11, 19))}</td><td>${esc(c.stage)} · ${esc(c.operation)}</td><td class="small">${esc(c.model ?? c.requestedModel)} · ${esc(c.effort ?? "?")}</td><td>${c.attempt}</td><td><span class="pill ${c.repair ? "warn" : ""}">${esc(c.kind)}</span></td>
+        <td class="small">${c.status === "blocked" ? "–" : `${tok(c.usage?.totalInputTokens)} / ${tok(c.usage?.outputTokens)}`}</td><td><span class="pill ${c.usage?.status === "known" ? "ok" : "warn"}">${esc(c.status === "blocked" ? "not launched" : c.usage?.status ?? "unknown")}</span></td><td class="small">${c.durationMs == null ? "" : Math.round(c.durationMs / 100) / 10 + "s"}</td>
+        <td><span class="pill ${c.status === "ok" ? "ok" : c.status === "running" ? "run" : "bad"}">${esc(c.status)}</span>${c.error ? ` <span class="small err">${esc(c.error.category)}</span>` : ""}${c.reason ? `<div class="small muted">${esc(c.reason)}</div>` : ""}</td></tr>
+        <tr data-detail="${esc(c.callId)}" hidden><td colspan="9"><pre class="log" style="max-height:260px;overflow:auto">${esc(JSON.stringify({ ...c, note: "metadata only: prompts and replies are never stored in the ledger" }, null, 2))}</pre></td></tr>`).join("") || '<tr><td colspan="9" class="muted">No calls match.</td></tr>'}
+      </tbody></table></div>`;
+  $("#usRun").onchange = (e) => { S.usageRun = e.target.value; renderUsageTab(body); };
+  const refilter = () => { S.usageFilter = { stage: $("#usfStage").value, kind: $("#usfKind").value, status: $("#usfStatus").value, text: $("#usfText").value }; renderUsageTab(body); };
+  ["usfStage", "usfKind", "usfStatus"].forEach((id) => ($(`#${id}`).onchange = refilter));
+  $("#usfText").onchange = refilter;
+  $$("[data-call]", body).forEach((tr) => (tr.onclick = () => { const r = $(`[data-detail="${tr.dataset.call}"]`, body); r.hidden = !r.hidden; }));
+}
+
+// ----- settings: usage budgets form -----
+
+const BUDGET_LABELS = { maxInputTokens: "Max input tokens", maxOutputTokens: "Max output tokens", maxEstimatedCost: "Max estimated cost (USD)", maxCalls: "Max Claude calls" };
+function budgetsFormHtml(b) {
+  const v = (x) => (x === null || x === undefined ? "" : esc(x));
+  const group = (scope, title, help) => `<div class="panel"><h3>${title}</h3><div class="small muted" style="margin-bottom:8px">${help}</div>
+    <div class="grid2" style="gap:8px">${Object.entries(BUDGET_LABELS).map(([k, l]) => `<div class="field"><label for="b-${scope}-${k}">${l}</label><input id="b-${scope}-${k}" data-b="${scope}.${k}" type="number" min="0" step="${k === "maxEstimatedCost" ? "any" : 1}" placeholder="no limit" value="${v(b?.[scope]?.[k])}" /></div>`).join("")}</div></div>`;
+  return `<h2>Usage budgets</h2>
+    <div class="panel"><div class="small muted"><b>Leave a field empty for no limit.</b> Empty is unrestricted; <b>0</b> is a real zero allowance and blocks every call. Limits are checked before each Claude call and count every call of the run, including failed and repair calls. Token and cost limits use usage the Claude CLI reported, so one call can finish past a limit; the next call is then refused. Estimated cost is the CLI's own estimate, not a bill. New jobs use the values saved here; a running job keeps its own.</div></div>
+    <div class="grid2">${group("run", "Whole run", "All Claude calls for this video's current run.")}${group("stage", "Each stage", "Applies to every stage separately (research, outline, script, ...).")}</div>
+    <div class="panel"><div class="grid2" style="gap:8px">
+      <div class="field"><label for="b-repair-attempts">Max repair attempts per operation</label><input id="b-repair-attempts" data-b="repair.maxAttemptsPerOperation" type="number" min="0" step="1" value="${v(b?.repair?.maxAttemptsPerOperation)}" /><div class="small muted">Default 1. Never more than 3, even if empty.</div></div>
+      <div class="field"><label for="b-repair-calls">Max repair calls per run</label><input id="b-repair-calls" data-b="repair.maxCallsPerRun" type="number" min="0" step="1" placeholder="no limit" value="${v(b?.repair?.maxCallsPerRun)}" /></div>
+      <div class="field"><label for="b-warn">Warn at (% of a limit)</label><input id="b-warn" data-b="warnings.usagePercent" type="number" min="1" max="100" step="1" value="${v(b?.warnings?.usagePercent)}" /></div>
+      <div class="field"><label for="b-unknown">When usage is unknown</label><select id="b-unknown" data-b="unknownUsage"><option value="warn" ${b?.unknownUsage !== "block" ? "selected" : ""}>warn and continue</option><option value="block" ${b?.unknownUsage === "block" ? "selected" : ""}>block further calls</option></select><div class="small muted">Applies when a limit is set but earlier calls reported no usage, so it can't be checked.</div></div>
+    </div><div class="err small" data-err="budgets"></div></div>`;
+}
+function readBudgets(form) {
+  const out = { run: {}, stage: {}, repair: {}, warnings: {} };
+  for (const el of $$("[data-b]", form)) {
+    const [scope, key] = el.dataset.b.split(".");
+    // Empty -> null (no limit). A non-number stays NaN so the validator reports it.
+    const val = el.tagName === "SELECT" ? el.value : el.validity?.badInput ? NaN : el.value.trim() === "" ? null : Number(el.value);
+    if (key === undefined) out[scope] = val;
+    else out[scope][key] = val;
+  }
+  return out;
+}
+
 // ----- settings: video formats and duration -----
 
 let settingsSchema = null;
@@ -672,6 +799,7 @@ async function renderSettings() {
         <div class="row" style="margin-top:8px"><button type="button" class="sm ghost" id="modelsReset">Reset models to defaults</button></div>
         <div class="err small" data-err="models"></div>
       </div>
+      ${budgetsFormHtml(eff.budgets)}
       <div id="setErr" class="err small" role="alert"></div>
       <div class="row" style="justify-content:flex-end"><button type="button" class="ghost" id="setRevert" disabled>Discard changes</button><button type="submit" class="primary" id="setSave" disabled>Save settings</button></div>
     </form>`;
@@ -680,6 +808,7 @@ async function renderSettings() {
     const num = (el) => (el.value.trim() === "" ? NaN : Number(el.value));
     const out = { formats: { main: {}, short: {} }, narration: { wordsPerMinute: num($("#wpm")), targetTolerance: num($("#tol")) / 100 }, models: {} };
     for (const st of schema.MODEL_STEPS) out.models[st.id] = { model: $(`[data-m=${st.id}]`, form).value, effort: $(`[data-e=${st.id}]`, form).value };
+    out.budgets = readBudgets(form);
     const unitErrors = [];
     for (const f of ["main", "short"])
       for (const k of ["targetSeconds", "minSeconds", "maxSeconds"]) {
@@ -695,7 +824,8 @@ async function renderSettings() {
     const problems = [...unitErrors, ...schema.validateSettings(out)];
     for (const f of ["main", "short"]) $(`[data-err=${f}]`, form).textContent = problems.filter((x) => x.startsWith(data.labels[f])).join(" · ");
     $("[data-err=narration]", form).textContent = problems.filter((x) => /rate|tolerance/i.test(x)).join(" · ");
-    $("[data-err=models]", form).textContent = problems.filter((x) => /model|effort/i.test(x)).join(" · ");
+    $("[data-err=models]", form).textContent = problems.filter((x) => /model|effort/i.test(x) && !/^Budget/.test(x)).join(" · ");
+    $("[data-err=budgets]", form).textContent = problems.filter((x) => /^Budget/.test(x)).join(" · ");
     $("#setSave").disabled = !S.settingsDirty || problems.length > 0;
     return { out, problems };
   };
@@ -1240,6 +1370,14 @@ function connect() {
     if (S.route.name !== "job") softRefresh();
   };
   es.addEventListener("videos", onVideos);
+  // Live usage: the pipeline's ledger totals arrive with each call; the Usage tab reloads from the persisted ledger.
+  es.addEventListener("usage", (e) => {
+    const ev = JSON.parse(e.data);
+    if (S.route.name === "video" && S.route.tab === "usage" && S.route.slug === ev.slug) {
+      clearTimeout(S.usageTimer);
+      S.usageTimer = setTimeout(() => { const t = $("#tab"); if (t) renderUsageTab(t); }, 250);
+    }
+  });
   es.addEventListener("settings", () => { if (S.route.name === "settings" && !S.settingsDirty) renderSettings(); });
   es.addEventListener("status", onVideos);
 }
@@ -1260,6 +1398,7 @@ function connect() {
     box.innerHTML = S.meta.env.warnings.map((w) => `<div style="color:var(--orange)">⚠ ${esc(w)}</div>`).join("");
     app.before(box);
   }
+  U = await import("/schema/usage.mjs").catch(() => null);
   connect();
   render();
   setInterval(async () => {

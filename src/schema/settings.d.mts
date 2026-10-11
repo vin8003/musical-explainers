@@ -2,16 +2,26 @@
 import type { Format } from "./timeline.mjs";
 
 export type FormatDuration = { targetSeconds: number; minSeconds: number; maxSeconds: number };
-export type ModelStepId = "research" | "outline" | "script" | "scriptFix" | "review" | "factcheck" | "revise" | "direct" | "visualReview";
+export type ModelStepId = "research" | "outline" | "script" | "scriptFix" | "review" | "factcheck" | "revise" | "direct" | "repair" | "visualReview";
 export type EffortLevel = "low" | "medium" | "high" | "xhigh" | "max";
 export type ModelChoice = { model: string; effort: EffortLevel };
 export type ModelStep = { id: ModelStepId; label: string; stage: string; tools?: "web" | "images"; why: string };
+/** null = unrestricted; 0 is a real zero allowance. */
+export type BudgetLimits = { maxInputTokens: number | null; maxOutputTokens: number | null; maxEstimatedCost: number | null; maxCalls: number | null };
+export type Budgets = {
+  run: BudgetLimits;
+  stage: BudgetLimits;
+  repair: { maxAttemptsPerOperation: number | null; maxCallsPerRun: number | null };
+  warnings: { usagePercent: number };
+  unknownUsage: "warn" | "block";
+};
 export type Settings = {
   version: number;
   formats: Record<Format, FormatDuration>;
   narration: { wordsPerMinute: number; targetTolerance: number };
   /** Model and reasoning effort per Claude call. */
   models: Record<ModelStepId, ModelChoice>;
+  budgets: Budgets;
 };
 export type DurationCheck = { verdict: "ok" | "off-target" | "short" | "long" | "unknown"; message: string };
 
@@ -33,3 +43,8 @@ export declare const MODEL_STEP_IDS: ModelStepId[];
 export declare const MODEL_CHOICES: readonly string[];
 export declare const EFFORT_LEVELS: readonly EffortLevel[];
 export declare function isAllowedModel(m: unknown): boolean;
+export declare const BUDGET_LIMIT_KEYS: string[];
+export declare const UNKNOWN_USAGE_POLICIES: string[];
+export declare const MAX_REPAIR_ATTEMPTS_HARD: number;
+export declare function validateBudgets(b: unknown): string[];
+export declare function normalizeBudgets(b: unknown): Budgets;

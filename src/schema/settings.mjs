@@ -27,6 +27,7 @@ export const MODEL_STEPS = [
   { id: "factcheck", label: "Fact check", stage: "factcheck", tools: "web", why: "Verdict per claim with sources. Needs reliable search use and caution; many items per call, so medium rather than high." },
   { id: "revise", label: "Fact revision", stage: "factcheck", why: "Rewrites only flagged shots using given corrections. Narrow and mechanical." },
   { id: "direct", label: "Shot direction", stage: "direct", why: "Many batches of structured storyboard JSON validated by code (retried on error). The highest call volume, so this is the best place to save." },
+  { id: "repair", label: "Output repair", stage: "any", why: "Fixes a small validation defect in an earlier reply by returning only the failing fields (or a reformatted object). Narrow and mechanical, so the cheapest setting is enough; it never replaces the model that generated the original." },
   { id: "visualReview", label: "Visual review", stage: "qa", tools: "images", why: "Looks at contact sheets and flags layout problems. Optional and run once per candidate; vision quality matters, so stay on Sonnet." },
 ];
 export const MODEL_STEP_IDS = MODEL_STEPS.map((s) => s.id);
@@ -47,11 +48,20 @@ export const DEFAULT_SETTINGS = Object.freeze({
     factcheck: Object.freeze({ model: "sonnet", effort: "medium" }),
     revise: Object.freeze({ model: "sonnet", effort: "low" }),
     direct: Object.freeze({ model: "sonnet", effort: "low" }),
+    repair: Object.freeze({ model: "sonnet", effort: "low" }),
     visualReview: Object.freeze({ model: "sonnet", effort: "medium" }),
   }),
   formats: Object.freeze({
     main: Object.freeze({ targetSeconds: 420, minSeconds: 300, maxSeconds: 600 }),
     short: Object.freeze({ targetSeconds: 45, minSeconds: 30, maxSeconds: 60 }),
+  }),
+  /** Usage budgets. null = unrestricted (never zero). Zero is a real zero allowance. See docs/usage-budgets.md. */
+  budgets: Object.freeze({
+    run: Object.freeze({ maxInputTokens: null, maxOutputTokens: null, maxEstimatedCost: null, maxCalls: null }),
+    stage: Object.freeze({ maxInputTokens: null, maxOutputTokens: null, maxEstimatedCost: null, maxCalls: null }),
+    repair: Object.freeze({ maxAttemptsPerOperation: 1, maxCallsPerRun: null }),
+    warnings: Object.freeze({ usagePercent: 80 }),
+    unknownUsage: "warn",
   }),
   narration: Object.freeze({
     /** Spoken words per minute used to estimate runtime before audio exists. */
@@ -62,6 +72,10 @@ export const DEFAULT_SETTINGS = Object.freeze({
 });
 
 const isNum = (v) => typeof v === "number" && Number.isFinite(v);
+export const BUDGET_LIMIT_KEYS = ["maxInputTokens", "maxOutputTokens", "maxEstimatedCost", "maxCalls"];
+export const UNKNOWN_USAGE_POLICIES = ["warn", "block"];
+/** Hard ceiling on repair attempts per operation, whatever the setting says: no unbounded retry loops. */
+export const MAX_REPAIR_ATTEMPTS_HARD = 3;
 const clone = (v) => JSON.parse(JSON.stringify(v));
 
 /**
@@ -99,6 +113,7 @@ export function validateSettings(s) {
         }
       }
   }
+  p.push(...validateBudgets(s.budgets));
   const n = s.narration;
   if (!n || typeof n !== "object") p.push("narration is required");
   else {
@@ -108,6 +123,48 @@ export function validateSettings(s) {
   return p;
 }
 
+const isEmpty = (v) => v === null || v === undefined || v === "";
+const COUNT_KEYS = ["maxInputTokens", "maxOutputTokens", "maxCalls", "maxAttemptsPerOperation", "maxCallsPerRun"];
+
+/** Budgets are optional: absent/null/"" = unrestricted. Zero is valid and means "allow none". */
+export function validateBudgets(b) {
+  const p = [];
+  if (isEmpty(b)) return p;
+  if (typeof b !== "object" || Array.isArray(b)) return ["budgets must be an object"];
+  const limit = (where, key, v) => {
+    if (isEmpty(v)) return;
+    if (!isNum(v) || v < 0) return p.push(`Budget ${where} ${key} must be a number of 0 or more, or empty for no limit`);
+    if (COUNT_KEYS.includes(key) && !Number.isInteger(v)) p.push(`Budget ${where} ${key} must be a whole number`);
+  };
+  for (const scope of ["run", "stage"]) {
+    const x = b[scope];
+    if (isEmpty(x)) continue;
+    if (typeof x !== "object" || Array.isArray(x)) p.push(`Budget ${scope} must be an object`);
+    else for (const k of BUDGET_LIMIT_KEYS) limit(scope, k, x[k]);
+  }
+  if (!isEmpty(b.repair)) {
+    if (typeof b.repair !== "object") p.push("Budget repair must be an object");
+    else for (const k of ["maxAttemptsPerOperation", "maxCallsPerRun"]) limit("repair", k, b.repair[k]);
+  }
+  if (!isEmpty(b.warnings?.usagePercent) && (!isNum(b.warnings.usagePercent) || b.warnings.usagePercent <= 0 || b.warnings.usagePercent > 100)) p.push("Budget warning threshold must be more than 0 and at most 100 percent");
+  if (!isEmpty(b.unknownUsage) && !UNKNOWN_USAGE_POLICIES.includes(b.unknownUsage)) p.push(`Budget unknownUsage must be ${UNKNOWN_USAGE_POLICIES.join(" or ")}`);
+  return p;
+}
+
+const lim = (v) => (isEmpty(v) ? null : v);
+/** Canonical budgets: unknown keys dropped, empty -> null, missing parts take the (unrestricted) defaults. Invalid values are kept so validation can report them. */
+export function normalizeBudgets(b) {
+  const d = DEFAULT_SETTINGS.budgets;
+  const scope = (x) => Object.fromEntries(BUDGET_LIMIT_KEYS.map((k) => [k, lim(x?.[k])]));
+  return {
+    run: scope(b?.run),
+    stage: scope(b?.stage),
+    repair: { maxAttemptsPerOperation: isEmpty(b?.repair?.maxAttemptsPerOperation) ? d.repair.maxAttemptsPerOperation : b.repair.maxAttemptsPerOperation, maxCallsPerRun: lim(b?.repair?.maxCallsPerRun) },
+    warnings: { usagePercent: isEmpty(b?.warnings?.usagePercent) ? d.warnings.usagePercent : b.warnings.usagePercent },
+    unknownUsage: isEmpty(b?.unknownUsage) ? d.unknownUsage : b.unknownUsage,
+  };
+}
+
 /** The fields an admin can save, in canonical shape (unknown keys dropped). */
 export function normalizeSettings(s) {
   const pick = (x) => ({ targetSeconds: x?.targetSeconds, minSeconds: x?.minSeconds, maxSeconds: x?.maxSeconds });
@@ -115,6 +172,7 @@ export function normalizeSettings(s) {
     version: SETTINGS_VERSION,
     formats: { main: pick(s?.formats?.main), short: pick(s?.formats?.short) },
     narration: { wordsPerMinute: s?.narration?.wordsPerMinute, targetTolerance: s?.narration?.targetTolerance },
+    budgets: normalizeBudgets(s?.budgets),
     // Model choices are optional input: any step not given keeps its default.
     models: Object.fromEntries(MODEL_STEPS.map((st) => [st.id, { ...DEFAULT_SETTINGS.models[st.id], ...pickModel(s?.models?.[st.id]) }])),
   };
@@ -141,6 +199,7 @@ export function resolveSettings(raw) {
     },
     narration: { ...DEFAULT_SETTINGS.narration, ...(raw.narration ?? {}) },
     models: raw.models,
+    budgets: raw.budgets,
   });
   const problems = validateSettings(merged);
   if (problems.length) {
